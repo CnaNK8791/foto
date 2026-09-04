@@ -1,7 +1,7 @@
 const express = require('express');
 const path = require('path');
 const { chromium } = require('playwright');
-const { extractFlightBlocksInBrowser, formatEntries } = require('./flightParser');
+const { runFlightExtraction, formatEntries } = require('./flightParser');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -197,9 +197,13 @@ app.post('/api/extract-element', async (req, res) => {
 });
 
 app.post('/api/extract-flights', async (req, res) => {
-  const { url, selector, format } = req.body || {};
+  const { url, format } = req.body || {};
   const common = readCommonParams(req.body);
   const outputFormat = format === 'short' ? 'short' : 'detailed';
+  // Селектор теперь необязателен: если не задан, карточки рейсов ищутся
+  // автоматически по тексту aria-label прямо в браузере (см. flightParser.js).
+  const selectorRaw = req.body?.selector;
+  const selector = typeof selectorRaw === 'string' && selectorRaw.trim() ? selectorRaw.trim() : null;
 
   let targetUrl;
   try {
@@ -208,29 +212,27 @@ app.post('/api/extract-flights', async (req, res) => {
     return res.status(400).json({ error: err.message });
   }
 
-  if (typeof selector !== 'string' || !selector.trim()) {
-    return res.status(400).json({ error: 'Укажите CSS-селектор блока (например, .flight-info)' });
-  }
-
   let browser;
   try {
     const opened = await openPage(targetUrl, common);
     browser = opened.browser;
     const page = opened.page;
 
-    const count = await page.locator(selector).count();
-    if (count === 0) {
-      return res.status(404).json({
-        error: `Блоки по селектору "${selector}" не найдены на странице.`,
-      });
+    const { entries, blockCount, autoDetected } = await page.evaluate(runFlightExtraction, selector);
+
+    if (blockCount === 0) {
+      const message = selector
+        ? `Блоки по селектору "${selector}" не найдены на странице.`
+        : 'Не удалось автоматически найти карточки рейсов на странице. Попробуйте указать CSS-селектор вручную или увеличить время ожидания/задержку.';
+      return res.status(404).json({ error: message });
     }
 
-    const entries = await page.$$eval(selector, extractFlightBlocksInBrowser);
     const text = formatEntries(entries, outputFormat);
 
     res.json({
       url: targetUrl,
       selector,
+      autoDetected,
       format: outputFormat,
       matchCount: entries.length,
       entries,

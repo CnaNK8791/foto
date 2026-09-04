@@ -259,7 +259,9 @@ function describeNetworkError(err) {
 
       lastText = data.text;
       codeEl.textContent = data.text;
-      matchCountEl.textContent = `Найдено блоков: ${data.matchCount}`;
+      matchCountEl.textContent = data.autoDetected
+        ? `Автоматически найдено рейсов: ${data.matchCount}`
+        : `Найдено блоков по селектору «${data.selector}»: ${data.matchCount}`;
 
       if (lastObjectUrl) URL.revokeObjectURL(lastObjectUrl);
       const blob = new Blob([data.text], { type: 'text/plain' });

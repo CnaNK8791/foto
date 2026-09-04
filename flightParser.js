@@ -3,21 +3,48 @@
 // aria-label/role — а не на хэшированные CSS-классы вида "foo_8688", которые
 // меняются между сборками сайта. Подробнее см. README раздел "Список рейсов".
 
-// Эта функция целиком выполняется в браузере через page.$$eval — внутри неё
-// доступны только браузерные API (document, DOM), а не Node.js.
-function extractFlightBlocksInBrowser(blocks) {
+// Эта функция целиком выполняется в браузере через page.evaluate(runFlightExtraction, selector) —
+// внутри неё доступны только браузерные API (document, DOM), а не Node.js,
+// поэтому все вспомогательные функции объявлены внутри неё же.
+function runFlightExtraction(selector) {
+  function findBlocks() {
+    if (selector) {
+      return Array.from(document.querySelectorAll(selector));
+    }
+    // Автоопределение карточек рейса: у trip.com (и, вероятно, у похожих
+    // сайтов) карточка целиком помечена готовым для скринридеров текстом
+    // вида "Flight departing from X at <дата-время> ... arriving ... at
+    // <дата-время>" в aria-label. Это гораздо надёжнее любого CSS-класса —
+    // такой текст не зависит от хэшей сборки и структуры вёрстки.
+    const NARRATIVE_RE =
+      /Flight departing from [\s\S]+? at \d{4}-\d{2}-\d{2}[\s\S]*?arriving[\s\S]+? at \d{4}-\d{2}-\d{2}/i;
+    const candidates = Array.from(document.querySelectorAll('[aria-label]')).filter((el) =>
+      NARRATIVE_RE.test(el.getAttribute('aria-label') || '')
+    );
+    // Если у подходящего элемента есть потомок, тоже подходящий под тот же
+    // шаблон, значит текущий элемент — лишняя внешняя обёртка, а не сама
+    // карточка. Оставляем только самые "внутренние" совпадения.
+    return candidates.filter((el) => !candidates.some((other) => other !== el && el.contains(other)));
+  }
+
   function attrText(el, sel) {
     const found = el.querySelector(sel);
     return found ? (found.textContent || '').trim() : '';
   }
 
-  // Аккуратно разбирает "родное" aria-label карточки — trip.com сам
-  // формирует его как готовый текст вида:
+  // Разбирает "родное" aria-label карточки — trip.com сам формирует его как
+  // готовый текст из нескольких предложений (разделены переносом строки),
+  // например:
   //   "Flight departing from X at <дата> and arriving at Y at <дата>."
   //   "This is a nonstop flight with a duration of 2h 25m"
   //   "One-way price: RUB 8,933"
-  // Используем его как источник истины для длительности/цены — это надёжнее,
-  // чем собирать их из отдельных хэшированных CSS-блоков.
+  // либо для рейсов со стыковкой:
+  //   "The flight duration is 18 hours 40 minutes, including a layover of ..."
+  // Обе формулировки ("duration of" и "duration is") распознаём как одно и
+  // то же предложение и выводим его как есть, не пытаясь домыслить точный
+  // смысл — формулировки самого trip.com иногда противоречивы/содержат
+  // непереведённые плейсхолдеры (например "${2}"), это их особенность, а
+  // не наша ошибка парсинга.
   function parseNarrative(ariaLabel) {
     const lines = (ariaLabel || '')
       .split('\n')
@@ -26,40 +53,30 @@ function extractFlightBlocksInBrowser(blocks) {
     let durationSentence = '';
     let priceSentence = '';
     for (const line of lines) {
-      if (/duration of/i.test(line)) durationSentence = line;
+      if (/duration\s+(is|of)/i.test(line)) durationSentence = line;
       if (/price\s*:/i.test(line)) priceSentence = line;
     }
-    const durationMatch = durationSentence.match(/duration of ([^.]+)$/i);
-    const priceMatch = priceSentence.match(/price\s*:\s*(.+)$/i);
-    return {
-      durationSentence,
-      priceSentence,
-      duration: durationMatch ? durationMatch[1].trim() : '',
-      price: priceMatch ? priceMatch[1].trim() : '',
-    };
+    return { durationSentence, priceSentence };
   }
 
   // Вылет/прилёт: контейнер помечен классом, содержащим "is-departure" или
   // "is-arrival" (сам суффикс класса — хэш, но подстрока стабильна), у него
-  // есть aria-label с полным названием аэропорта+терминалом, внутри — span с
-  // data-testid="flight-time-<точная дата-время>" и код аэропорта в span'ах
-  // с классом, содержащим "flight-info-stop__code".
+  // есть aria-label с полным названием аэропорта(+терминалом), внутри — span
+  // с data-testid="flight-time-<точная дата-время>" и код аэропорта в
+  // span'ах с классом, содержащим "flight-info-stop__code".
   function parseEndpoint(container) {
     if (!container) return { name: '', code: '', datetime: '' };
     const name = (container.getAttribute('aria-label') || '').trim();
     const timeEl = container.querySelector('[data-testid^="flight-time-"]');
     const datetime = timeEl
-      ? (timeEl.getAttribute('data-testid') || '').replace(/^flight-time-/, '').trim()
+      ? (timeEl.getAttribute('data-testid') || '').replace(/^flight-time-/, '').trim() ||
+        timeEl.textContent.trim()
       : '';
     const codeSpans = container.querySelectorAll('[class*="flight-info-stop__code"] span');
     const code = codeSpans.length ? codeSpans[0].textContent.trim() : '';
-    return { name, code, datetime: datetime || timeEl?.textContent.trim() || '' };
+    return { name, code, datetime };
   }
 
-  // Номер рейса нигде не гарантирован структурно — ищем эвристически:
-  // сначала в элементах с явным намёком в data-testid/class ("flight-no" и
-  // т.п.), затем по всему тексту и атрибутам блока по паттерну "2-3 буквы +
-  // 2-4 цифры" (SL100, TG201...), отсеивая слишком короткие/длинные совпадения.
   // Валюты и прочие частые ложные срабатывания ("RUB 12,450" похоже на
   // формат номера рейса "XX123") — отсекаем по известному коду.
   const NOT_A_FLIGHT_CODE = new Set([
@@ -67,6 +84,13 @@ function extractFlightBlocksInBrowser(blocks) {
     'HKD', 'IDR', 'VND', 'MYR', 'PHP', 'KRW', 'INR', 'AED', 'CHF', 'KZT',
   ]);
 
+  // Номер рейса нигде не гарантирован структурно (на реальных страницах
+  // trip.com в списке результатов его вообще нет — см. buildAirlineCodeMap
+  // ниже как запасной вариант). Ищем эвристически: сначала в элементах с
+  // явным намёком в data-testid/class ("flight-no" и т.п.), затем по всему
+  // тексту и атрибутам блока по паттерну "2-3 буквы + 2-4 цифры" (SL100,
+  // TG201...), отсеивая слишком короткие/длинные совпадения и известные
+  // коды валют.
   function findFlightNumber(block, narrative) {
     const texts = [];
     const hinted = block.querySelector(
@@ -111,7 +135,39 @@ function extractFlightBlocksInBrowser(blocks) {
     return '';
   }
 
-  return blocks.map((block) => {
+  // На странице результатов trip.com в боковой панели фильтров есть список
+  // авиакомпаний с их IATA-кодом (атрибут data-code) и полным названием
+  // (aria-label соседнего элемента). Настоящего номера рейса в разметке
+  // списка карточек нет вообще — если findFlightNumber ничего не нашла,
+  // используем код авиакомпании как более честный запасной вариант, чем
+  // прочерк на пустом месте (помечаем flightNumberIsAirlineCode: true).
+  function buildAirlineCodeMap() {
+    const map = {};
+    document
+      .querySelectorAll('[data-testid="filter_airline"] .filter-item[data-code]')
+      .forEach((item) => {
+        const code = item.getAttribute('data-code');
+        const wrapper = item.querySelector('.filter-item-wrapper[aria-label]');
+        const label = wrapper ? wrapper.getAttribute('aria-label') : '';
+        if (code && label) map[label.trim()] = code;
+      });
+    return map;
+  }
+
+  function resolveAirlineCodes(airlineNames, codeMap) {
+    if (!airlineNames) return '';
+    return airlineNames
+      .split(',')
+      .map((name) => name.trim())
+      .map((name) => codeMap[name] || '')
+      .filter(Boolean)
+      .join('/');
+  }
+
+  const blocks = findBlocks();
+  const airlineCodeMap = buildAirlineCodeMap();
+
+  const entries = blocks.map((block) => {
     const airline =
       attrText(block, '[data-testid="flights-name"]') ||
       attrText(block, '[class*="flights-name"]') ||
@@ -122,19 +178,52 @@ function extractFlightBlocksInBrowser(blocks) {
     const departure = parseEndpoint(departureContainer);
     const arrival = parseEndpoint(arrivalContainer);
     const narrative = parseNarrative(block.getAttribute('aria-label'));
-    const flightNumber = findFlightNumber(block, narrative);
+
+    // Общая длительность рейса — берём из выделенного UI-элемента, а не из
+    // текста aria-label: он даёт короткий стабильный формат ("2h 25m",
+    // "21h 45m") одинаково и для прямых, и для стыковочных рейсов.
+    const durationEl = block.querySelector('[data-testid="flightInfoDuration"]');
+    const duration = durationEl ? durationEl.textContent.trim() : '';
+
+    // "Direct" для прямого рейса или описание пересадки вида
+    // "18h 40m in Phu Quoc Island" для рейса со стыковкой.
+    const stopsEl = block.querySelector('[data-testid="stopInfoText"]');
+    const stopsText = stopsEl ? stopsEl.textContent.trim() : '';
+    const hasStop = !!stopsText && stopsText.toLowerCase() !== 'direct';
+
+    const priceMatch = narrative.priceSentence.match(/price\s*:\s*(.+)$/i);
+    const price = priceMatch ? priceMatch[1].trim() : '';
+
+    let flightNumber = findFlightNumber(block, narrative);
+    let flightNumberIsAirlineCode = false;
+    if (!flightNumber) {
+      const code = resolveAirlineCodes(airline, airlineCodeMap);
+      if (code) {
+        flightNumber = code;
+        flightNumberIsAirlineCode = true;
+      }
+    }
 
     return {
       airline,
       flightNumber,
+      flightNumberIsAirlineCode,
       departure,
       arrival,
-      duration: narrative.duration,
+      duration,
       durationSentence: narrative.durationSentence,
-      price: narrative.price,
+      price,
       priceSentence: narrative.priceSentence,
+      stopsText,
+      hasStop,
     };
   });
+
+  return {
+    entries,
+    blockCount: blocks.length,
+    autoDetected: !selector,
+  };
 }
 
 function combineAirport(endpoint) {
@@ -146,6 +235,7 @@ function formatDetailed(entry) {
   const lines = [entry.airline || 'Авиакомпания не найдена', `Flight: ${entry.flightNumber || '—'}`];
   lines.push(`Flight departing: ${combineAirport(entry.departure)}`);
   lines.push(`Flight arriving: ${combineAirport(entry.arrival)}`);
+  if (entry.hasStop && entry.stopsText) lines.push(`Stop: ${entry.stopsText}`);
   if (entry.durationSentence) lines.push(entry.durationSentence);
   if (entry.priceSentence) lines.push(entry.priceSentence);
   return lines.join('\n');
@@ -155,6 +245,7 @@ function formatShort(entry) {
   const lines = [entry.airline || 'Авиакомпания не найдена', entry.flightNumber || '—'];
   lines.push([entry.departure.code, entry.departure.datetime].filter(Boolean).join(' '));
   lines.push([entry.arrival.code, entry.arrival.datetime].filter(Boolean).join(' '));
+  if (entry.hasStop && entry.stopsText) lines.push(entry.stopsText);
   if (entry.duration) lines.push(entry.duration);
   if (entry.price) lines.push(entry.price);
   return lines.join('\n');
@@ -165,4 +256,4 @@ function formatEntries(entries, format) {
   return entries.map(formatter).join('\n\n');
 }
 
-module.exports = { extractFlightBlocksInBrowser, formatEntries };
+module.exports = { runFlightExtraction, formatEntries };
