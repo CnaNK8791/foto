@@ -16,6 +16,7 @@
     <div class="tabs" role="tablist">
       <button type="button" class="tab active" id="tab-shot" data-target="panel-shot">📸 Скриншот</button>
       <button type="button" class="tab" id="tab-extract" data-target="panel-extract">🧩 HTML элемента</button>
+      <button type="button" class="tab" id="tab-flights" data-target="panel-flights">✈️ Список рейсов</button>
     </div>
 
     <section id="panel-shot" class="panel">
@@ -126,6 +127,69 @@
         <div class="extract-actions">
           <button type="button" id="copy-html-btn" class="secondary-btn">📋 Скопировать</button>
           <a id="extract-download-link" class="download-btn" download>⬇ Сохранить как .html</a>
+        </div>
+      </div>
+    </section>
+
+    <section id="panel-flights" class="panel" hidden>
+      <form id="flights-form" class="card">
+        <label for="flights-url">Адрес страницы</label>
+        <input type="text" id="flights-url" name="flights-url" placeholder="example.com" autocomplete="off" required />
+
+        <label for="flights-selector">CSS-селектор карточки рейса</label>
+        <input type="text" id="flights-selector" name="flights-selector" placeholder=".flight-info" autocomplete="off" required />
+
+        <div class="options">
+          <label>
+            Формат файла
+            <select id="flights-output-format">
+              <option value="detailed">Развёрнутый</option>
+              <option value="short">Короткий</option>
+            </select>
+          </label>
+
+          <label>
+            Когда считать страницу загруженной
+            <select id="flights-waitUntil">
+              <option value="load">Загрузка страницы (load)</option>
+              <option value="networkidle">Полная тишина в сети (networkidle)</option>
+              <option value="domcontentloaded">Только HTML (domcontentloaded)</option>
+            </select>
+          </label>
+
+          <label>
+            Макс. время ожидания загрузки, сек
+            <input type="number" id="flights-timeout" value="45" min="5" max="120" step="5" />
+          </label>
+
+          <label>
+            Доп. задержка перед извлечением, мс
+            <input type="number" id="flights-delay" value="0" min="0" max="30000" step="500" />
+          </label>
+        </div>
+
+        <button type="submit" id="flights-submit-btn">Извлечь список рейсов</button>
+        <p class="hint">
+          Находит ВСЕ блоки по селектору (например, все карточки рейсов на
+          странице) и собирает из каждого: авиакомпанию, номер рейса, вылет
+          и прилёт (аэропорт, код, время), длительность и цену — в один
+          файл. Заточено под разметку в духе trip.com (data-testid и
+          aria-label карточек рейсов); на другой структуре страницы
+          результат может быть неполным. Номер рейса ищется эвристически по
+          всему блоку — если не найден, будет прочерк «—».
+        </p>
+      </form>
+
+      <div id="flights-status" class="status" hidden></div>
+
+      <div id="flights-result" class="result extract-result" hidden>
+        <div class="extract-meta">
+          <span id="flights-match-count"></span>
+        </div>
+        <pre id="flights-text"><code></code></pre>
+        <div class="extract-actions">
+          <button type="button" id="copy-flights-btn" class="secondary-btn">📋 Скопировать</button>
+          <a id="flights-download-link" class="download-btn" download>⬇ Сохранить как .txt</a>
         </div>
       </div>
     </section>

@@ -1,6 +1,7 @@
 const express = require('express');
 const path = require('path');
 const { chromium } = require('playwright');
+const { extractFlightBlocksInBrowser, formatEntries } = require('./flightParser');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -190,6 +191,59 @@ app.post('/api/extract-element', async (req, res) => {
       message = 'Некорректный CSS-селектор.';
     }
     res.status(502).json({ error: message || 'Не удалось извлечь элемент со страницы.' });
+  } finally {
+    if (browser) await browser.close();
+  }
+});
+
+app.post('/api/extract-flights', async (req, res) => {
+  const { url, selector, format } = req.body || {};
+  const common = readCommonParams(req.body);
+  const outputFormat = format === 'short' ? 'short' : 'detailed';
+
+  let targetUrl;
+  try {
+    targetUrl = normalizeUrl(url);
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+
+  if (typeof selector !== 'string' || !selector.trim()) {
+    return res.status(400).json({ error: 'Укажите CSS-селектор блока (например, .flight-info)' });
+  }
+
+  let browser;
+  try {
+    const opened = await openPage(targetUrl, common);
+    browser = opened.browser;
+    const page = opened.page;
+
+    const count = await page.locator(selector).count();
+    if (count === 0) {
+      return res.status(404).json({
+        error: `Блоки по селектору "${selector}" не найдены на странице.`,
+      });
+    }
+
+    const entries = await page.$$eval(selector, extractFlightBlocksInBrowser);
+    const text = formatEntries(entries, outputFormat);
+
+    res.json({
+      url: targetUrl,
+      selector,
+      format: outputFormat,
+      matchCount: entries.length,
+      entries,
+      text,
+      filename: buildFilename(targetUrl, 'txt'),
+    });
+  } catch (err) {
+    console.error('Ошибка при извлечении списка рейсов:', err.message);
+    let message = friendlyNavError(err);
+    if (!message && /selector|Unexpected token|is not a valid selector/i.test(err.message)) {
+      message = 'Некорректный CSS-селектор.';
+    }
+    res.status(502).json({ error: message || 'Не удалось извлечь блоки со страницы.' });
   } finally {
     if (browser) await browser.close();
   }

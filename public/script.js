@@ -206,3 +206,87 @@ function describeNetworkError(err) {
     }, 1500);
   });
 })();
+
+// --- Режим "Список рейсов" ------------------------------------------------
+(function initFlightsForm() {
+  const form = document.getElementById('flights-form');
+  const submitBtn = document.getElementById('flights-submit-btn');
+  const statusEl = document.getElementById('flights-status');
+  const resultEl = document.getElementById('flights-result');
+  const codeEl = document.querySelector('#flights-text code');
+  const matchCountEl = document.getElementById('flights-match-count');
+  const copyBtn = document.getElementById('copy-flights-btn');
+  const downloadLink = document.getElementById('flights-download-link');
+
+  let lastObjectUrl = null;
+  let lastText = '';
+
+  function setStatus(message, type) {
+    statusEl.hidden = !message;
+    statusEl.textContent = message || '';
+    statusEl.className = `status ${type || ''}`.trim();
+  }
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+
+    const payload = {
+      url: document.getElementById('flights-url').value,
+      selector: document.getElementById('flights-selector').value,
+      format: document.getElementById('flights-output-format').value,
+      delay: document.getElementById('flights-delay').value,
+      timeout: document.getElementById('flights-timeout').value,
+      waitUntil: document.getElementById('flights-waitUntil').value,
+    };
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Извлекаем…';
+    setStatus('Открываем страницу и ищем карточки рейсов, подождите…', 'ok');
+    resultEl.hidden = true;
+
+    try {
+      const response = await fetch('/api/extract-flights', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Не удалось извлечь список рейсов.');
+      }
+
+      lastText = data.text;
+      codeEl.textContent = data.text;
+      matchCountEl.textContent = `Найдено блоков: ${data.matchCount}`;
+
+      if (lastObjectUrl) URL.revokeObjectURL(lastObjectUrl);
+      const blob = new Blob([data.text], { type: 'text/plain' });
+      lastObjectUrl = URL.createObjectURL(blob);
+      downloadLink.href = lastObjectUrl;
+      downloadLink.download = data.filename || 'flights.txt';
+
+      resultEl.hidden = false;
+      setStatus('Готово!', 'ok');
+    } catch (err) {
+      setStatus(describeNetworkError(err), 'error');
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Извлечь список рейсов';
+    }
+  });
+
+  copyBtn.addEventListener('click', async () => {
+    if (!lastText) return;
+    try {
+      await navigator.clipboard.writeText(lastText);
+      copyBtn.textContent = '✅ Скопировано';
+    } catch {
+      copyBtn.textContent = '⚠️ Не удалось скопировать';
+    }
+    setTimeout(() => {
+      copyBtn.textContent = '📋 Скопировать';
+    }, 1500);
+  });
+})();
