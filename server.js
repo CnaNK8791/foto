@@ -10,8 +10,11 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 const MIN_SIZE = 200;
 const MAX_SIZE = 3840;
-const MAX_DELAY_MS = 5000;
-const NAV_TIMEOUT_MS = 45000;
+const MAX_DELAY_MS = 30000; // доп. пауза перед снимком после загрузки
+const MIN_TIMEOUT_S = 5;
+const MAX_TIMEOUT_S = 120;
+const DEFAULT_TIMEOUT_S = 45;
+const WAIT_STRATEGIES = new Set(['load', 'domcontentloaded', 'networkidle']);
 
 function clamp(value, min, max, fallback) {
   const n = Number(value);
@@ -57,6 +60,9 @@ app.post('/api/screenshot', async (req, res) => {
   const width = clamp(req.body?.width, MIN_SIZE, MAX_SIZE, 1280);
   const height = clamp(req.body?.height, MIN_SIZE, MAX_SIZE, 800);
   const delay = clamp(req.body?.delay, 0, MAX_DELAY_MS, 0);
+  const timeoutS = clamp(req.body?.timeout, MIN_TIMEOUT_S, MAX_TIMEOUT_S, DEFAULT_TIMEOUT_S);
+  const navTimeoutMs = timeoutS * 1000;
+  const waitUntil = WAIT_STRATEGIES.has(req.body?.waitUntil) ? req.body.waitUntil : 'load';
   const shotFormat = format === 'jpeg' ? 'jpeg' : 'png';
 
   let targetUrl;
@@ -80,14 +86,17 @@ app.post('/api/screenshot', async (req, res) => {
     const page = await context.newPage();
 
     await page.goto(targetUrl, {
-      waitUntil: 'load',
-      timeout: NAV_TIMEOUT_MS,
+      waitUntil,
+      timeout: navTimeoutMs,
     });
 
-    // Даём странице немного "успокоиться" (доп. запросы, рекламa,
-    // аналитика), но не проваливаем запрос, если сеть так и не затихла —
-    // многие сайты держат соединения открытыми бесконечно.
-    await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
+    // Если пользователь не выбрал строгое ожидание "тишины сети" сам,
+    // даём странице немного "успокоиться" по умолчанию (доп. запросы,
+    // реклама, аналитика), но не проваливаем запрос, если сеть так и не
+    // затихла — многие сайты держат соединения открытыми бесконечно.
+    if (waitUntil !== 'networkidle') {
+      await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
+    }
 
     if (delay > 0) {
       await page.waitForTimeout(delay);

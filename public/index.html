@@ -42,8 +42,22 @@
         </label>
 
         <label>
-          Задержка перед снимком, мс
-          <input type="number" id="delay" value="0" min="0" max="5000" step="100" />
+          Когда считать страницу загруженной
+          <select id="waitUntil">
+            <option value="load">Загрузка страницы (load)</option>
+            <option value="networkidle">Полная тишина в сети (networkidle)</option>
+            <option value="domcontentloaded">Только HTML (domcontentloaded)</option>
+          </select>
+        </label>
+
+        <label>
+          Макс. время ожидания загрузки, сек
+          <input type="number" id="timeout" value="45" min="5" max="120" step="5" />
+        </label>
+
+        <label>
+          Доп. задержка перед снимком, мс
+          <input type="number" id="delay" value="0" min="0" max="30000" step="500" />
         </label>
       </div>
 

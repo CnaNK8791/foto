@@ -40,6 +40,8 @@ form.addEventListener('submit', async (event) => {
     width: document.getElementById('width').value,
     height: document.getElementById('height').value,
     delay: document.getElementById('delay').value,
+    timeout: document.getElementById('timeout').value,
+    waitUntil: document.getElementById('waitUntil').value,
   };
 
   submitBtn.disabled = true;
