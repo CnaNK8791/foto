@@ -13,6 +13,17 @@ function setStatus(message, type) {
   statusEl.className = `status ${type || ''}`.trim();
 }
 
+// Страница открыта напрямую как файл (двойным кликом), а не через сервер —
+// backend недоступен, скриншоты работать не будут.
+if (location.protocol === 'file:') {
+  setStatus(
+    'Похоже, страница открыта напрямую из файла, а не через сервер. ' +
+      'Запустите приложение командой "npm start" и откройте http://localhost:3000 — ' +
+      'иначе запросы к серверу будут падать с ошибкой "Failed to fetch".',
+    'error'
+  );
+}
+
 function filenameFromDisposition(header) {
   if (!header) return 'screenshot.png';
   const match = /filename="?([^"]+)"?/i.exec(header);
@@ -75,7 +86,11 @@ form.addEventListener('submit', async (event) => {
     autoLink.click();
     autoLink.remove();
   } catch (err) {
-    setStatus(err.message || 'Произошла ошибка', 'error');
+    const isNetworkError = err instanceof TypeError;
+    const message = isNetworkError
+      ? 'Не удалось связаться с сервером. Убедитесь, что приложение запущено (npm start) и страница открыта через http://localhost:3000.'
+      : err.message || 'Произошла ошибка';
+    setStatus(message, 'error');
   } finally {
     submitBtn.disabled = false;
     submitBtn.textContent = 'Сделать скриншот';
