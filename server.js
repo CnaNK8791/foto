@@ -11,7 +11,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 const MIN_SIZE = 200;
 const MAX_SIZE = 3840;
 const MAX_DELAY_MS = 5000;
-const NAV_TIMEOUT_MS = 30000;
+const NAV_TIMEOUT_MS = 45000;
 
 function clamp(value, min, max, fallback) {
   const n = Number(value);
@@ -80,9 +80,14 @@ app.post('/api/screenshot', async (req, res) => {
     const page = await context.newPage();
 
     await page.goto(targetUrl, {
-      waitUntil: 'networkidle',
+      waitUntil: 'load',
       timeout: NAV_TIMEOUT_MS,
     });
+
+    // Даём странице немного "успокоиться" (доп. запросы, рекламa,
+    // аналитика), но не проваливаем запрос, если сеть так и не затихла —
+    // многие сайты держат соединения открытыми бесконечно.
+    await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
 
     if (delay > 0) {
       await page.waitForTimeout(delay);
