@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Скриншотер страниц</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>📸 Скриншотер страниц</h1>
+      <p class="subtitle">Введите адрес страницы — получите фото сайта и сохраните его себе на устройство</p>
+    </header>
+
+    <form id="shot-form" class="card">
+      <label for="url">Адрес страницы</label>
+      <input type="text" id="url" name="url" placeholder="example.com" autocomplete="off" required />
+
+      <div class="options">
+        <label class="checkbox">
+          <input type="checkbox" id="fullPage" checked />
+          Вся страница целиком
+        </label>
+
+        <label>
+          Формат
+          <select id="format">
+            <option value="png">PNG</option>
+            <option value="jpeg">JPEG</option>
+          </select>
+        </label>
+
+        <label>
+          Ширина, px
+          <input type="number" id="width" value="1280" min="200" max="3840" />
+        </label>
+
+        <label>
+          Высота, px
+          <input type="number" id="height" value="800" min="200" max="3840" />
+        </label>
+
+        <label>
+          Задержка перед снимком, мс
+          <input type="number" id="delay" value="0" min="0" max="5000" step="100" />
+        </label>
+      </div>
+
+      <button type="submit" id="submit-btn">Сделать скриншот</button>
+      <p class="hint">Полноэкранная страница может сниматься дольше — подождите немного.</p>
+    </form>
+
+    <div id="status" class="status" hidden></div>
+
+    <div id="result" class="result" hidden>
+      <img id="preview" alt="Скриншот страницы" />
+      <a id="download-link" class="download-btn" download>⬇ Сохранить фото</a>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>

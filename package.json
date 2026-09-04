@@ -1,0 +1,19 @@
+{
+  "name": "foto",
+  "version": "1.0.0",
+  "description": "Веб-приложение для создания скриншотов веб-страниц по URL",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "postinstall": "playwright install --with-deps chromium || playwright install chromium"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "playwright": "^1.47.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT"
+}
