@@ -41,7 +41,7 @@ body {
 }
 
 .app {
-  max-width: 640px;
+  max-width: 720px;
   margin: 0 auto;
   padding: 40px 20px 80px;
 }
@@ -197,4 +197,81 @@ button:disabled {
   .options {
     grid-template-columns: 1fr;
   }
+}
+
+/* --- Вкладки --- */
+.tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.tab {
+  flex: 1;
+  background: var(--card-bg);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  font-weight: 600;
+  font-size: 14px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.tab:hover:not(:disabled) {
+  background: var(--bg);
+}
+
+.tab.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.panel[hidden] {
+  display: none;
+}
+
+/* --- Извлечение HTML элемента --- */
+.extract-result {
+  align-items: stretch;
+}
+
+.extract-meta {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+#extract-html {
+  margin: 0;
+  max-height: 420px;
+  overflow: auto;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+}
+
+#extract-html code {
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  font-size: 13px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text);
+}
+
+.extract-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.secondary-btn {
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+}
+
+.secondary-btn:hover:not(:disabled) {
+  background: var(--ok-bg);
 }
