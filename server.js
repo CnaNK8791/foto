@@ -148,8 +148,9 @@ app.post('/api/screenshot', async (req, res) => {
   const shotFormat = format === 'jpeg' ? 'jpeg' : 'png';
   const scrollY = clamp(req.body?.scrollY, 0, MAX_SCROLL_PX, 0);
   // Координаты клика — относительно окна браузера (common.width x
-  // common.height), то есть именно то, что видно на итоговом снимке (без
-  // "Вся страница целиком") или в текущей прокрученной области (с ней).
+  // common.height) СРАЗУ ПОСЛЕ загрузки страницы, ДО прокрутки (см. ниже,
+  // почему клик выполняется первым) — то есть именно то, что видно на
+  // самом первом (непрокрученном) снимке страницы.
   const clickX = clampOptional(req.body?.clickX, 0, common.width);
   const clickY = clampOptional(req.body?.clickY, 0, common.height);
   const hasClick = clickX !== null && clickY !== null;
@@ -167,6 +168,21 @@ app.post('/api/screenshot', async (req, res) => {
     browser = opened.browser;
     const page = opened.page;
 
+    if (hasClick) {
+      // Клик "вслепую" по координатам (без поиска элемента под курсором) —
+      // работает даже если под точкой лежит что-то нестандартное, и не
+      // падает с ошибкой, если там в итоге ничего интерактивного не
+      // окажется. Выполняется СРАЗУ после загрузки страницы, ДО прокрутки —
+      // координаты клика обычно подбираются по превью ещё не прокрученной
+      // страницы, а сама прокрутка сдвигает контент, так что клик "после"
+      // неё бил бы совсем по другому месту. Заодно это позволяет кликом
+      // закрыть баннер/попап ДО того, как он помешает прокрутке или
+      // подгрузке "ленивого" контента ниже.
+      await page.mouse.click(clickX, clickY);
+      await page.waitForTimeout(300);
+      await page.waitForLoadState('networkidle', { timeout: 1500 }).catch(() => {});
+    }
+
     if (scrollY > 0) {
       // Прокручиваем страницу вниз на заданное число пикселей — это
       // сдвигает область для обычного снимка (например, чтобы убрать из
@@ -175,18 +191,6 @@ app.post('/api/screenshot', async (req, res) => {
       // при прокрутке) перед снимком всей страницы. Делаем это шагами, а не
       // одним прыжком — см. scrollPageDown.
       await scrollPageDown(page, scrollY);
-    }
-
-    if (hasClick) {
-      // Клик "вслепую" по координатам (без поиска элемента под курсором) —
-      // работает даже если под точкой лежит что-то нестандартное, и не
-      // падает с ошибкой, если там в итоге ничего интерактивного не
-      // окажется. Выполняется после прокрутки и прямо перед снимком, чтобы
-      // визуальный эффект клика (открывшееся меню/подсказка, закрывшийся
-      // баннер) гарантированно попал в кадр.
-      await page.mouse.click(clickX, clickY);
-      await page.waitForTimeout(300);
-      await page.waitForLoadState('networkidle', { timeout: 1500 }).catch(() => {});
     }
 
     const buffer = await page.screenshot({
