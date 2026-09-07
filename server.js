@@ -183,8 +183,20 @@ function parseActions(raw, width, height) {
 // стадиях. Если в сценарии не было ни одной явной отметки "Скриншот",
 // снимок всё равно делается один раз — в самом конце (обратная
 // совместимость и разумное поведение по умолчанию).
+// Помимо самих снимков, возвращает "лог" выполнения — по одной записи на
+// шаг сценария. Для клика в лог попадает, произошёл ли по факту переход на
+// другой URL (page.url() до и после клика). Это важно, потому что
+// координаты клика — это просто пиксели, а не элемент: они "вслепую"
+// подобраны по превью КАКОГО-ТО одного момента сценария. Если один из
+// кликов на самом деле уводит на другую страницу (открывает
+// раздел/переходит по ссылке), а координаты для следующих шагов подобраны
+// ещё по превью ДО этого перехода — они почти наверняка попадут не туда
+// (или в пустоту), потому что страница уже совсем другая. Явно сообщаем
+// об этом в ответе, а не оставляем пользователя гадать, почему "второй
+// клик не сработал".
 async function runScenario(page, actions, screenshotOptions) {
   const screenshots = [];
+  const log = [];
 
   async function captureScreenshot() {
     const buffer = await page.screenshot({
@@ -192,15 +204,20 @@ async function runScenario(page, actions, screenshotOptions) {
       type: screenshotOptions.type,
     });
     screenshots.push(buffer);
+    log.push({ type: 'screenshot', index: screenshots.length });
   }
 
   for (const action of actions) {
     if (action.type === 'click') {
+      const urlBefore = page.url();
       await page.mouse.click(action.x, action.y);
       await page.waitForTimeout(300);
       await page.waitForLoadState('networkidle', { timeout: 1500 }).catch(() => {});
+      const urlAfter = page.url();
+      log.push({ type: 'click', x: action.x, y: action.y, navigated: urlAfter !== urlBefore, url: urlAfter });
     } else if (action.type === 'scroll') {
       await scrollPageDown(page, action.amount);
+      log.push({ type: 'scroll', amount: action.amount });
     } else if (action.type === 'screenshot') {
       await captureScreenshot();
     }
@@ -210,7 +227,7 @@ async function runScenario(page, actions, screenshotOptions) {
     await captureScreenshot();
   }
 
-  return screenshots;
+  return { screenshots, log };
 }
 
 function readCommonParams(body) {
@@ -265,7 +282,10 @@ app.post('/api/screenshot', async (req, res) => {
     browser = opened.browser;
     const page = opened.page;
 
-    const buffers = await runScenario(page, actions, { fullPage: Boolean(fullPage), type: shotFormat });
+    const { screenshots: buffers, log } = await runScenario(page, actions, {
+      fullPage: Boolean(fullPage),
+      type: shotFormat,
+    });
 
     const baseFilename = buildFilename(targetUrl, ext);
     const screenshots = buffers.map((buffer, index) => ({
@@ -279,7 +299,30 @@ app.post('/api/screenshot', async (req, res) => {
       dataUrl: `data:${mimeType};base64,${buffer.toString('base64')}`,
     }));
 
-    res.json({ screenshots });
+    // Если какой-то клик по факту увёл на другой URL, а ПОСЛЕ него в
+    // сценарии есть ещё клик или прокрутка (координаты/параметры которых
+    // могли подбираться по превью ДО этого перехода) — предупреждаем: они,
+    // скорее всего, указывают не туда. Автоматический финальный снимок (у
+    // него нет координат, которые можно перепутать) в счёт не идёт — иначе
+    // самый обычный "клик по кнопке входа → один снимок результата"
+    // получал бы предупреждение на пустом месте.
+    const warnings = [];
+    log.forEach((entry, index) => {
+      if (entry.type !== 'click' || !entry.navigated) return;
+      const hasStaleFollowup = log
+        .slice(index + 1)
+        .some((later) => later.type === 'click' || later.type === 'scroll');
+      if (hasStaleFollowup) {
+        warnings.push(
+          `Шаг ${index + 1} (клик X=${entry.x}, Y=${entry.y}) привёл к переходу на другую страницу ` +
+            `(${entry.url}). Если координаты следующих шагов подобраны по превью ДО этого перехода — ` +
+            `они, скорее всего, указывают не туда. Досмотрите сценарий до этого шага (добавьте здесь ` +
+            `«📸 Снимок здесь»), затем по НОВОМУ превью подберите координаты для шагов после него.`
+        );
+      }
+    });
+
+    res.json({ screenshots, log, warnings });
   } catch (err) {
     console.error('Ошибка при создании скриншота:', err.message);
     const message = friendlyNavError(err) || 'Не удалось сделать скриншот страницы.';

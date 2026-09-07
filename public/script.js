@@ -37,6 +37,7 @@ function describeNetworkError(err) {
   const statusEl = document.getElementById('shot-status');
   const resultEl = document.getElementById('shot-result');
   const galleryEl = document.getElementById('gallery');
+  const warningsEl = document.getElementById('scenario-warnings');
   const widthInput = document.getElementById('width');
   const heightInput = document.getElementById('height');
   const actionsListEl = document.getElementById('actions-list');
@@ -217,6 +218,7 @@ function describeNetworkError(err) {
     submitBtn.textContent = 'Снимаем скриншот…';
     setStatus('Открываем страницу и делаем снимок, подождите…', 'ok');
     resultEl.hidden = true;
+    warningsEl.hidden = true;
 
     try {
       const response = await fetch('/api/screenshot', {
@@ -267,6 +269,23 @@ function describeNetworkError(err) {
       });
 
       resultEl.hidden = false;
+
+      const warnings = Array.isArray(data?.warnings) ? data.warnings : [];
+      if (warnings.length > 0) {
+        // Строим через textContent/DOM, а не innerHTML: текст предупреждения
+        // содержит URL с произвольного стороннего сайта (куда увёл клик) —
+        // вставлять его как HTML без экранирования небезопасно.
+        warningsEl.hidden = false;
+        warningsEl.innerHTML = '';
+        const title = document.createElement('strong');
+        title.textContent = '⚠️ Обратите внимание:';
+        warningsEl.appendChild(title);
+        warnings.forEach((w) => {
+          const line = document.createElement('div');
+          line.textContent = `• ${w}`;
+          warningsEl.appendChild(line);
+        });
+      }
 
       setStatus(
         screenshots.length > 1
