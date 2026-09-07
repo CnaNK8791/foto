@@ -165,17 +165,35 @@ function parseActions(raw, width, height) {
     } else if (item.type === 'scroll') {
       const amount = clamp(item.amount, 0, MAX_SCROLL_PX, 0);
       if (amount > 0) actions.push({ type: 'scroll', amount });
+    } else if (item.type === 'screenshot') {
+      actions.push({ type: 'screenshot' });
     }
   }
   return actions;
 }
 
 // Выполняет сценарий действий по порядку — ровно так, как его собрал
-// пользователь (клик, потом прокрутка, потом ещё клик и т.д.). Каждый шаг
-// выполняется независимо от остальных: клик "вслепую" по координатам не
-// падает с ошибкой, если под точкой ничего интерактивного нет, а
-// прокрутка идёт шагами с ожиданием подгрузки (см. scrollPageDown).
-async function runActions(page, actions) {
+// пользователь (клик, потом прокрутка, потом ещё клик, потом снимок и
+// т.д., в любом сочетании). Каждый шаг клик/прокрутка выполняется
+// независимо от остальных: клик "вслепую" по координатам не падает с
+// ошибкой, если под точкой ничего интерактивного нет, а прокрутка идёт
+// шагами с ожиданием подгрузки (см. scrollPageDown). Шаг "screenshot"
+// делает снимок ПРЯМО В ЭТОТ МОМЕНТ сценария (а не только в самом конце) —
+// так за один запуск можно получить несколько скриншотов на разных
+// стадиях. Если в сценарии не было ни одной явной отметки "Скриншот",
+// снимок всё равно делается один раз — в самом конце (обратная
+// совместимость и разумное поведение по умолчанию).
+async function runScenario(page, actions, screenshotOptions) {
+  const screenshots = [];
+
+  async function captureScreenshot() {
+    const buffer = await page.screenshot({
+      fullPage: screenshotOptions.fullPage,
+      type: screenshotOptions.type,
+    });
+    screenshots.push(buffer);
+  }
+
   for (const action of actions) {
     if (action.type === 'click') {
       await page.mouse.click(action.x, action.y);
@@ -183,8 +201,16 @@ async function runActions(page, actions) {
       await page.waitForLoadState('networkidle', { timeout: 1500 }).catch(() => {});
     } else if (action.type === 'scroll') {
       await scrollPageDown(page, action.amount);
+    } else if (action.type === 'screenshot') {
+      await captureScreenshot();
     }
   }
+
+  if (screenshots.length === 0) {
+    await captureScreenshot();
+  }
+
+  return screenshots;
 }
 
 function readCommonParams(body) {
@@ -200,14 +226,19 @@ app.post('/api/screenshot', async (req, res) => {
   const { url, fullPage, format } = req.body || {};
   const common = readCommonParams(req.body);
   const shotFormat = format === 'jpeg' ? 'jpeg' : 'png';
+  const ext = shotFormat === 'jpeg' ? 'jpg' : 'png';
+  const mimeType = shotFormat === 'jpeg' ? 'image/jpeg' : 'image/png';
 
-  // Сценарий действий (клик/прокрутка, в любом порядке и количестве),
-  // выполняется по шагам сразу после загрузки страницы и до снимка — см.
-  // parseActions/runActions. Для обратной совместимости старые одиночные
-  // поля clickX/clickY/scrollY по-прежнему поддерживаются: если явный
-  // список actions не передан, из них собирается сценарий "клик → прокрутка"
-  // (в этом порядке — см. историю: клик до прокрутки, иначе координаты
-  // клика перестают совпадать с тем, что видно на превью).
+  // Сценарий действий (клик/прокрутка/скриншот, в любом порядке и
+  // количестве), выполняется по шагам сразу после загрузки страницы — см.
+  // parseActions/runScenario. Отметка "screenshot" делает снимок прямо в
+  // этой точке сценария — так за один запуск можно получить несколько
+  // снимков на разных стадиях; без явных отметок делается один снимок в
+  // конце, как раньше. Для обратной совместимости старые одиночные поля
+  // clickX/clickY/scrollY по-прежнему поддерживаются: если явный список
+  // actions не передан, из них собирается сценарий "клик → прокрутка" (в
+  // этом порядке — клик до прокрутки, иначе координаты клика перестают
+  // совпадать с тем, что видно на превью).
   let actions = parseActions(req.body?.actions, common.width, common.height);
   if (actions.length === 0) {
     const legacyClickX = clampOptional(req.body?.clickX, 0, common.width);
@@ -234,19 +265,21 @@ app.post('/api/screenshot', async (req, res) => {
     browser = opened.browser;
     const page = opened.page;
 
-    if (actions.length > 0) {
-      await runActions(page, actions);
-    }
+    const buffers = await runScenario(page, actions, { fullPage: Boolean(fullPage), type: shotFormat });
 
-    const buffer = await page.screenshot({
-      fullPage: Boolean(fullPage),
-      type: shotFormat,
-    });
+    const baseFilename = buildFilename(targetUrl, ext);
+    const screenshots = buffers.map((buffer, index) => ({
+      // При нескольких снимках за один запуск добавляем номер перед
+      // расширением (photo_2026-...png -> photo_2026-..._2.png), при
+      // одном — имя файла остаётся как раньше.
+      filename:
+        buffers.length > 1
+          ? baseFilename.replace(new RegExp(`\\.${ext}$`), `_${index + 1}.${ext}`)
+          : baseFilename,
+      dataUrl: `data:${mimeType};base64,${buffer.toString('base64')}`,
+    }));
 
-    const filename = buildFilename(targetUrl, shotFormat === 'jpeg' ? 'jpg' : 'png');
-    res.setHeader('Content-Type', shotFormat === 'jpeg' ? 'image/jpeg' : 'image/png');
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    res.send(buffer);
+    res.json({ screenshots });
   } catch (err) {
     console.error('Ошибка при создании скриншота:', err.message);
     const message = friendlyNavError(err) || 'Не удалось сделать скриншот страницы.';

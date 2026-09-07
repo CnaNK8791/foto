@@ -172,6 +172,26 @@ button:disabled {
   gap: 14px;
 }
 
+.gallery {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.gallery-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.gallery-item__label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
 .preview-wrapper {
   position: relative;
   display: inline-block;
@@ -179,7 +199,7 @@ button:disabled {
   line-height: 0;
 }
 
-#preview {
+.preview-img {
   max-width: 100%;
   border-radius: 10px;
   border: 1px solid var(--border);

@@ -23,12 +23,6 @@ function warnIfOpenedAsFile(statusSetter) {
   }
 }
 
-function filenameFromDisposition(header) {
-  if (!header) return 'screenshot.png';
-  const match = /filename="?([^"]+)"?/i.exec(header);
-  return match ? match[1] : 'screenshot.png';
-}
-
 function describeNetworkError(err) {
   const isNetworkError = err instanceof TypeError;
   return isNetworkError
@@ -42,23 +36,21 @@ function describeNetworkError(err) {
   const submitBtn = document.getElementById('submit-btn');
   const statusEl = document.getElementById('shot-status');
   const resultEl = document.getElementById('shot-result');
-  const previewEl = document.getElementById('preview');
-  const previewWrapperEl = document.getElementById('preview-wrapper');
-  const downloadLink = document.getElementById('download-link');
+  const galleryEl = document.getElementById('gallery');
   const widthInput = document.getElementById('width');
   const heightInput = document.getElementById('height');
   const actionsListEl = document.getElementById('actions-list');
   const actionsEmptyEl = document.getElementById('actions-empty');
   const addScrollAmountInput = document.getElementById('add-scroll-amount');
   const addScrollBtn = document.getElementById('add-scroll-btn');
+  const addScreenshotBtn = document.getElementById('add-screenshot-btn');
   const clearActionsBtn = document.getElementById('clear-actions-btn');
 
-  let lastObjectUrl = null;
   // Сценарий действий — "мини-программа", которая выполняется по шагам на
-  // сервере перед снимком: { type: 'click', x, y } | { type: 'scroll', amount }.
-  // Копится между запросами (не сбрасывается сама после снимка) — так можно
-  // собирать сценарий постепенно, добавляя шаги по мере того, как видно
-  // результат предыдущих.
+  // сервере перед снимком(-ами): { type: 'click', x, y } | { type: 'scroll',
+  // amount } | { type: 'screenshot' }. Копится между запросами (не
+  // сбрасывается сама после снимка) — так можно собирать сценарий
+  // постепенно, добавляя шаги по мере того, как видно результат предыдущих.
   let actions = [];
 
   function setStatus(message, type) {
@@ -69,14 +61,10 @@ function describeNetworkError(err) {
 
   warnIfOpenedAsFile(setStatus);
 
-  function clearMarkers() {
-    previewWrapperEl.querySelectorAll('.click-marker').forEach((el) => el.remove());
-  }
-
   function describeAction(action) {
-    return action.type === 'click'
-      ? `🖱️ Клик (X=${action.x}, Y=${action.y})`
-      : `⬇️ Прокрутка вниз на ${action.amount} px`;
+    if (action.type === 'click') return `🖱️ Клик (X=${action.x}, Y=${action.y})`;
+    if (action.type === 'scroll') return `⬇️ Прокрутка вниз на ${action.amount} px`;
+    return '📸 Снимок здесь';
   }
 
   function renderActions() {
@@ -135,49 +123,52 @@ function describeNetworkError(err) {
 
   renderActions();
 
-  // Клик по превью скриншота: добавляет шаг "Клик" в сценарий в этой точке
-  // (переводим координату клика мышью — в отображаемых на странице
-  // пикселях картинки, которая может быть уменьшена CSS'ом через
-  // max-width:100% — в координату исходного снимка через
-  // naturalWidth/naturalHeight). Можно кликать несколько раз в разных
-  // местах — каждый клик добавляет отдельный шаг по порядку.
-  previewEl.addEventListener('click', (event) => {
-    const rect = previewEl.getBoundingClientRect();
-    if (!previewEl.naturalWidth || !previewEl.naturalHeight || rect.width === 0) return;
+  // Вешаем обработчик клика на любую картинку в галерее: добавляет шаг
+  // "Клик" в сценарий в этой точке (переводим координату клика мышью — в
+  // отображаемых на странице пикселях картинки, которая может быть
+  // уменьшена CSS'ом через max-width:100% — в координату исходного снимка
+  // через naturalWidth/naturalHeight). Можно кликать несколько раз в
+  // разных местах и на разных снимках галереи — каждый клик добавляет
+  // отдельный шаг по порядку.
+  function attachPicker(imgEl, wrapperEl) {
+    imgEl.addEventListener('click', (event) => {
+      const rect = imgEl.getBoundingClientRect();
+      if (!imgEl.naturalWidth || !imgEl.naturalHeight || rect.width === 0) return;
 
-    const displayX = event.clientX - rect.left;
-    const displayY = event.clientY - rect.top;
-    const scaleX = previewEl.naturalWidth / rect.width;
-    const scaleY = previewEl.naturalHeight / rect.height;
+      const displayX = event.clientX - rect.left;
+      const displayY = event.clientY - rect.top;
+      const scaleX = imgEl.naturalWidth / rect.width;
+      const scaleY = imgEl.naturalHeight / rect.height;
 
-    let naturalX = Math.round(displayX * scaleX);
-    let naturalY = Math.round(displayY * scaleY);
+      let naturalX = Math.round(displayX * scaleX);
+      let naturalY = Math.round(displayY * scaleY);
 
-    // Сам клик на сервере выполняется по текущему окну браузера
-    // (viewport), а превью может показывать снимок ВСЕЙ страницы (она
-    // выше окна) — ограничиваем координаты размером окна, иначе клик
-    // окажется за пределами того, что реально видно на сервере в момент
-    // клика.
-    const viewportWidth = Number(widthInput.value) || naturalX;
-    const viewportHeight = Number(heightInput.value) || naturalY;
-    naturalX = Math.min(naturalX, viewportWidth);
-    naturalY = Math.min(naturalY, viewportHeight);
+      // Сам клик на сервере выполняется по текущему окну браузера
+      // (viewport), а превью может показывать снимок ВСЕЙ страницы (она
+      // выше окна) — ограничиваем координаты размером окна, иначе клик
+      // окажется за пределами того, что реально видно на сервере в момент
+      // клика.
+      const viewportWidth = Number(widthInput.value) || naturalX;
+      const viewportHeight = Number(heightInput.value) || naturalY;
+      naturalX = Math.min(naturalX, viewportWidth);
+      naturalY = Math.min(naturalY, viewportHeight);
 
-    actions.push({ type: 'click', x: naturalX, y: naturalY });
-    renderActions();
+      actions.push({ type: 'click', x: naturalX, y: naturalY });
+      renderActions();
 
-    const marker = document.createElement('div');
-    marker.className = 'click-marker';
-    marker.textContent = String(actions.length);
-    marker.style.left = `${displayX}px`;
-    marker.style.top = `${displayY}px`;
-    previewWrapperEl.appendChild(marker);
+      const marker = document.createElement('div');
+      marker.className = 'click-marker';
+      marker.textContent = String(actions.length);
+      marker.style.left = `${displayX}px`;
+      marker.style.top = `${displayY}px`;
+      wrapperEl.appendChild(marker);
 
-    setStatus(
-      `Шаг ${actions.length} «Клик (X=${naturalX}, Y=${naturalY})» добавлен в сценарий. Можно добавить ещё шаги или нажать «Сделать скриншот».`,
-      'ok'
-    );
-  });
+      setStatus(
+        `Шаг ${actions.length} «Клик (X=${naturalX}, Y=${naturalY})» добавлен в сценарий. Можно добавить ещё шаги или нажать «Сделать скриншот».`,
+        'ok'
+      );
+    });
+  }
 
   addScrollBtn.addEventListener('click', () => {
     let amount = Number(addScrollAmountInput.value);
@@ -192,16 +183,23 @@ function describeNetworkError(err) {
     setStatus(`Шаг ${actions.length} «Прокрутка на ${amount} px» добавлен в сценарий.`, 'ok');
   });
 
+  addScreenshotBtn.addEventListener('click', () => {
+    actions.push({ type: 'screenshot' });
+    renderActions();
+    setStatus(
+      `Шаг ${actions.length} «📸 Снимок здесь» добавлен в сценарий. Можно добавить ещё шаги или нажать «Сделать скриншот».`,
+      'ok'
+    );
+  });
+
   clearActionsBtn.addEventListener('click', () => {
     actions = [];
     renderActions();
-    clearMarkers();
     setStatus('Сценарий очищен.', 'ok');
   });
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
-    clearMarkers();
 
     const payload = {
       url: document.getElementById('url').value,
@@ -227,37 +225,55 @@ function describeNetworkError(err) {
         body: JSON.stringify(payload),
       });
 
+      const data = await response.json().catch(() => null);
+
       if (!response.ok) {
-        let message = 'Не удалось сделать скриншот.';
-        try {
-          const data = await response.json();
-          if (data?.error) message = data.error;
-        } catch {
-          // ignore
-        }
-        throw new Error(message);
+        throw new Error(data?.error || 'Не удалось сделать скриншот.');
       }
 
-      const blob = await response.blob();
-      const filename = filenameFromDisposition(response.headers.get('Content-Disposition'));
+      const screenshots = Array.isArray(data?.screenshots) ? data.screenshots : [];
+      if (screenshots.length === 0) {
+        throw new Error('Сервер не вернул ни одного снимка.');
+      }
 
-      if (lastObjectUrl) URL.revokeObjectURL(lastObjectUrl);
-      lastObjectUrl = URL.createObjectURL(blob);
+      galleryEl.innerHTML = '';
+      screenshots.forEach((shot, index) => {
+        const item = document.createElement('div');
+        item.className = 'gallery-item';
 
-      previewEl.src = lastObjectUrl;
-      downloadLink.href = lastObjectUrl;
-      downloadLink.download = filename;
+        const label = document.createElement('span');
+        label.className = 'gallery-item__label';
+        label.textContent =
+          screenshots.length > 1 ? `Скриншот ${index + 1} из ${screenshots.length}` : 'Скриншот';
+
+        const wrapper = document.createElement('div');
+        wrapper.className = 'preview-wrapper';
+
+        const img = document.createElement('img');
+        img.className = 'preview-img';
+        img.alt = 'Скриншот страницы';
+        img.src = shot.dataUrl;
+        wrapper.appendChild(img);
+        attachPicker(img, wrapper);
+
+        const downloadLink = document.createElement('a');
+        downloadLink.className = 'download-btn';
+        downloadLink.href = shot.dataUrl;
+        downloadLink.download = shot.filename || `screenshot_${index + 1}.png`;
+        downloadLink.textContent = '⬇ Сохранить фото';
+
+        item.append(label, wrapper, downloadLink);
+        galleryEl.appendChild(item);
+      });
+
       resultEl.hidden = false;
 
-      setStatus('Готово! Фото сохраняется на устройство…', 'ok');
-
-      // Автоматически сохраняем файл пользователю
-      const autoLink = document.createElement('a');
-      autoLink.href = lastObjectUrl;
-      autoLink.download = filename;
-      document.body.appendChild(autoLink);
-      autoLink.click();
-      autoLink.remove();
+      setStatus(
+        screenshots.length > 1
+          ? `Готово! Получено снимков: ${screenshots.length}. Скачайте каждый по отдельности кнопкой под ним.`
+          : 'Готово! Скачайте фото кнопкой под ним.',
+        'ok'
+      );
     } catch (err) {
       setStatus(describeNetworkError(err), 'error');
     } finally {
