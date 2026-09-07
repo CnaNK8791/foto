@@ -15,6 +15,7 @@ const MAX_DELAY_MS = 30000; // доп. пауза перед снимком по
 const MIN_TIMEOUT_S = 5;
 const MAX_TIMEOUT_S = 120;
 const DEFAULT_TIMEOUT_S = 45;
+const MAX_SCROLL_PX = 20000; // прокрутка вниз перед снимком
 const WAIT_STRATEGIES = new Set(['load', 'domcontentloaded', 'networkidle']);
 
 function clamp(value, min, max, fallback) {
@@ -109,6 +110,7 @@ app.post('/api/screenshot', async (req, res) => {
   const { url, fullPage, format } = req.body || {};
   const common = readCommonParams(req.body);
   const shotFormat = format === 'jpeg' ? 'jpeg' : 'png';
+  const scrollY = clamp(req.body?.scrollY, 0, MAX_SCROLL_PX, 0);
 
   let targetUrl;
   try {
@@ -122,6 +124,18 @@ app.post('/api/screenshot', async (req, res) => {
     const opened = await openPage(targetUrl, common);
     browser = opened.browser;
     const page = opened.page;
+
+    if (scrollY > 0) {
+      // Прокручиваем страницу вниз на заданное число пикселей — это
+      // сдвигает область для обычного снимка (например, чтобы убрать из
+      // кадра "прилипшую" шапку/баннер) и заодно помогает подгрузить
+      // "ленивый" контент (изображения, которые появляются только при
+      // прокрутке) перед снимком всей страницы.
+      await page.evaluate((y) => window.scrollBy(0, y), scrollY);
+      // Даём странице немного времени отрисовать то, что подгрузилось
+      // после прокрутки (анимации, ленивая загрузка изображений).
+      await page.waitForTimeout(300);
+    }
 
     const buffer = await page.screenshot({
       fullPage: Boolean(fullPage),
