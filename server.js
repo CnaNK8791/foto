@@ -20,6 +20,7 @@ const SCROLL_STEP_PX = 700;
 const SCROLL_STEP_DELAY_MS = 400;
 const SCROLL_STEP_NETWORKIDLE_MS = 800;
 const SCROLL_FINAL_NETWORKIDLE_MS = 3000;
+const MAX_ACTIONS = 20; // макс. число шагов в сценарии клик/прокрутка
 const WAIT_STRATEGIES = new Set(['load', 'domcontentloaded', 'networkidle']);
 
 function clamp(value, min, max, fallback) {
@@ -94,6 +95,20 @@ async function openPage(targetUrl, { width, height, waitUntil, navTimeoutMs, del
   });
   const page = await context.newPage();
 
+  // Каждый запрос и так получает свежий изолированный браузер/контекст
+  // (без сохранённых кук/кэша с прошлых запросов), но дополнительно явно
+  // чистим кэш/куки и отключаем кэширование через CDP — на случай сайтов
+  // с сервис-воркерами или другой офлайн-логикой, которая могла бы
+  // повлиять на то, что реально загрузится и попадёт на снимок.
+  try {
+    const cdp = await context.newCDPSession(page);
+    await cdp.send('Network.clearBrowserCache');
+    await cdp.send('Network.clearBrowserCookies');
+    await cdp.send('Network.setCacheDisabled', { cacheDisabled: true });
+  } catch {
+    // Не критично, если CDP-сессия недоступна — продолжаем без неё.
+  }
+
   await page.goto(targetUrl, { waitUntil, timeout: navTimeoutMs });
 
   // Если пользователь не выбрал строгое ожидание "тишины сети" сам, даём
@@ -133,6 +148,45 @@ async function scrollPageDown(page, targetY) {
   await page.waitForLoadState('networkidle', { timeout: SCROLL_FINAL_NETWORKIDLE_MS }).catch(() => {});
 }
 
+// Разбирает сценарий действий из тела запроса: массив шагов вида
+// { type: 'click', x, y } или { type: 'scroll', amount }, в том порядке,
+// в котором их нужно выполнить. Некорректные/неполные шаги молча
+// пропускаются, а не валят весь запрос — так проще собирать сценарий на
+// фронтенде, не боясь случайного мусора.
+function parseActions(raw, width, height) {
+  if (!Array.isArray(raw)) return [];
+  const actions = [];
+  for (const item of raw.slice(0, MAX_ACTIONS)) {
+    if (!item || typeof item !== 'object') continue;
+    if (item.type === 'click') {
+      const x = clampOptional(item.x, 0, width);
+      const y = clampOptional(item.y, 0, height);
+      if (x !== null && y !== null) actions.push({ type: 'click', x, y });
+    } else if (item.type === 'scroll') {
+      const amount = clamp(item.amount, 0, MAX_SCROLL_PX, 0);
+      if (amount > 0) actions.push({ type: 'scroll', amount });
+    }
+  }
+  return actions;
+}
+
+// Выполняет сценарий действий по порядку — ровно так, как его собрал
+// пользователь (клик, потом прокрутка, потом ещё клик и т.д.). Каждый шаг
+// выполняется независимо от остальных: клик "вслепую" по координатам не
+// падает с ошибкой, если под точкой ничего интерактивного нет, а
+// прокрутка идёт шагами с ожиданием подгрузки (см. scrollPageDown).
+async function runActions(page, actions) {
+  for (const action of actions) {
+    if (action.type === 'click') {
+      await page.mouse.click(action.x, action.y);
+      await page.waitForTimeout(300);
+      await page.waitForLoadState('networkidle', { timeout: 1500 }).catch(() => {});
+    } else if (action.type === 'scroll') {
+      await scrollPageDown(page, action.amount);
+    }
+  }
+}
+
 function readCommonParams(body) {
   const width = clamp(body?.width, MIN_SIZE, MAX_SIZE, 1280);
   const height = clamp(body?.height, MIN_SIZE, MAX_SIZE, 800);
@@ -146,14 +200,26 @@ app.post('/api/screenshot', async (req, res) => {
   const { url, fullPage, format } = req.body || {};
   const common = readCommonParams(req.body);
   const shotFormat = format === 'jpeg' ? 'jpeg' : 'png';
-  const scrollY = clamp(req.body?.scrollY, 0, MAX_SCROLL_PX, 0);
-  // Координаты клика — относительно окна браузера (common.width x
-  // common.height) СРАЗУ ПОСЛЕ загрузки страницы, ДО прокрутки (см. ниже,
-  // почему клик выполняется первым) — то есть именно то, что видно на
-  // самом первом (непрокрученном) снимке страницы.
-  const clickX = clampOptional(req.body?.clickX, 0, common.width);
-  const clickY = clampOptional(req.body?.clickY, 0, common.height);
-  const hasClick = clickX !== null && clickY !== null;
+
+  // Сценарий действий (клик/прокрутка, в любом порядке и количестве),
+  // выполняется по шагам сразу после загрузки страницы и до снимка — см.
+  // parseActions/runActions. Для обратной совместимости старые одиночные
+  // поля clickX/clickY/scrollY по-прежнему поддерживаются: если явный
+  // список actions не передан, из них собирается сценарий "клик → прокрутка"
+  // (в этом порядке — см. историю: клик до прокрутки, иначе координаты
+  // клика перестают совпадать с тем, что видно на превью).
+  let actions = parseActions(req.body?.actions, common.width, common.height);
+  if (actions.length === 0) {
+    const legacyClickX = clampOptional(req.body?.clickX, 0, common.width);
+    const legacyClickY = clampOptional(req.body?.clickY, 0, common.height);
+    const legacyScroll = clamp(req.body?.scrollY, 0, MAX_SCROLL_PX, 0);
+    if (legacyClickX !== null && legacyClickY !== null) {
+      actions.push({ type: 'click', x: legacyClickX, y: legacyClickY });
+    }
+    if (legacyScroll > 0) {
+      actions.push({ type: 'scroll', amount: legacyScroll });
+    }
+  }
 
   let targetUrl;
   try {
@@ -168,29 +234,8 @@ app.post('/api/screenshot', async (req, res) => {
     browser = opened.browser;
     const page = opened.page;
 
-    if (hasClick) {
-      // Клик "вслепую" по координатам (без поиска элемента под курсором) —
-      // работает даже если под точкой лежит что-то нестандартное, и не
-      // падает с ошибкой, если там в итоге ничего интерактивного не
-      // окажется. Выполняется СРАЗУ после загрузки страницы, ДО прокрутки —
-      // координаты клика обычно подбираются по превью ещё не прокрученной
-      // страницы, а сама прокрутка сдвигает контент, так что клик "после"
-      // неё бил бы совсем по другому месту. Заодно это позволяет кликом
-      // закрыть баннер/попап ДО того, как он помешает прокрутке или
-      // подгрузке "ленивого" контента ниже.
-      await page.mouse.click(clickX, clickY);
-      await page.waitForTimeout(300);
-      await page.waitForLoadState('networkidle', { timeout: 1500 }).catch(() => {});
-    }
-
-    if (scrollY > 0) {
-      // Прокручиваем страницу вниз на заданное число пикселей — это
-      // сдвигает область для обычного снимка (например, чтобы убрать из
-      // кадра "прилипшую" шапку/баннер) и заодно помогает подгрузить
-      // "ленивый" контент (карточки/изображения, которые появляются только
-      // при прокрутке) перед снимком всей страницы. Делаем это шагами, а не
-      // одним прыжком — см. scrollPageDown.
-      await scrollPageDown(page, scrollY);
+    if (actions.length > 0) {
+      await runActions(page, actions);
     }
 
     const buffer = await page.screenshot({

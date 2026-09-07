@@ -190,14 +190,124 @@ button:disabled {
 
 .click-marker {
   position: absolute;
-  width: 16px;
-  height: 16px;
-  margin: -8px 0 0 -8px;
+  width: 20px;
+  height: 20px;
+  margin: -10px 0 0 -10px;
   border-radius: 50%;
-  background: rgba(239, 68, 68, 0.85);
+  background: rgba(239, 68, 68, 0.9);
   border: 2px solid #fff;
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
   pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  line-height: 1;
+}
+
+/* --- Конструктор сценария действий --- */
+.scenario-builder {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--bg);
+}
+
+.scenario-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.actions-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.actions-empty {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.action-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+.action-item__badge {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.action-item__desc {
+  flex: 1;
+}
+
+.action-item__buttons {
+  display: flex;
+  gap: 4px;
+}
+
+.action-item__buttons button {
+  padding: 2px 8px;
+  font-size: 13px;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+
+.action-item__buttons button:hover:not(:disabled) {
+  background: var(--bg);
+  color: var(--text);
+}
+
+.action-item__buttons button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.actions-add-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.actions-add-row input {
+  width: 140px;
+  font: inherit;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--card-bg);
+  color: var(--text);
 }
 
 .download-btn {

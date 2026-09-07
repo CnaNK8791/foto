@@ -43,14 +43,23 @@ function describeNetworkError(err) {
   const statusEl = document.getElementById('shot-status');
   const resultEl = document.getElementById('shot-result');
   const previewEl = document.getElementById('preview');
+  const previewWrapperEl = document.getElementById('preview-wrapper');
   const downloadLink = document.getElementById('download-link');
-  const clickMarkerEl = document.getElementById('click-marker');
-  const clickXInput = document.getElementById('clickX');
-  const clickYInput = document.getElementById('clickY');
   const widthInput = document.getElementById('width');
   const heightInput = document.getElementById('height');
+  const actionsListEl = document.getElementById('actions-list');
+  const actionsEmptyEl = document.getElementById('actions-empty');
+  const addScrollAmountInput = document.getElementById('add-scroll-amount');
+  const addScrollBtn = document.getElementById('add-scroll-btn');
+  const clearActionsBtn = document.getElementById('clear-actions-btn');
 
   let lastObjectUrl = null;
+  // Сценарий действий — "мини-программа", которая выполняется по шагам на
+  // сервере перед снимком: { type: 'click', x, y } | { type: 'scroll', amount }.
+  // Копится между запросами (не сбрасывается сама после снимка) — так можно
+  // собирать сценарий постепенно, добавляя шаги по мере того, как видно
+  // результат предыдущих.
+  let actions = [];
 
   function setStatus(message, type) {
     statusEl.hidden = !message;
@@ -60,12 +69,78 @@ function describeNetworkError(err) {
 
   warnIfOpenedAsFile(setStatus);
 
-  // Клик по превью скриншота: переводим координату клика мышью (в
-  // отображаемых на странице пикселях картинки, которая может быть
-  // уменьшена CSS'ом через max-width:100%) в координату исходного снимка
-  // (naturalWidth/naturalHeight) и подставляем в поля clickX/clickY —
-  // дальше пользователь просто жмёт "Сделать скриншот" ещё раз, чтобы
-  // применить клик по-настоящему (в браузере на сервере).
+  function clearMarkers() {
+    previewWrapperEl.querySelectorAll('.click-marker').forEach((el) => el.remove());
+  }
+
+  function describeAction(action) {
+    return action.type === 'click'
+      ? `🖱️ Клик (X=${action.x}, Y=${action.y})`
+      : `⬇️ Прокрутка вниз на ${action.amount} px`;
+  }
+
+  function renderActions() {
+    actionsListEl.innerHTML = '';
+    actionsEmptyEl.hidden = actions.length > 0;
+
+    actions.forEach((action, index) => {
+      const li = document.createElement('li');
+      li.className = 'action-item';
+
+      const badge = document.createElement('span');
+      badge.className = 'action-item__badge';
+      badge.textContent = String(index + 1);
+
+      const desc = document.createElement('span');
+      desc.className = 'action-item__desc';
+      desc.textContent = describeAction(action);
+
+      const buttons = document.createElement('span');
+      buttons.className = 'action-item__buttons';
+
+      const upBtn = document.createElement('button');
+      upBtn.type = 'button';
+      upBtn.textContent = '↑';
+      upBtn.title = 'Переместить раньше';
+      upBtn.disabled = index === 0;
+      upBtn.addEventListener('click', () => {
+        [actions[index - 1], actions[index]] = [actions[index], actions[index - 1]];
+        renderActions();
+      });
+
+      const downBtn = document.createElement('button');
+      downBtn.type = 'button';
+      downBtn.textContent = '↓';
+      downBtn.title = 'Переместить позже';
+      downBtn.disabled = index === actions.length - 1;
+      downBtn.addEventListener('click', () => {
+        [actions[index + 1], actions[index]] = [actions[index], actions[index + 1]];
+        renderActions();
+      });
+
+      const removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.textContent = '✕';
+      removeBtn.title = 'Удалить шаг';
+      removeBtn.addEventListener('click', () => {
+        actions.splice(index, 1);
+        renderActions();
+      });
+
+      buttons.append(upBtn, downBtn, removeBtn);
+      li.append(badge, desc, buttons);
+      actionsListEl.appendChild(li);
+    });
+  }
+
+  renderActions();
+
+  // Клик по превью скриншота: добавляет шаг "Клик" в сценарий в этой точке
+  // (переводим координату клика мышью — в отображаемых на странице
+  // пикселях картинки, которая может быть уменьшена CSS'ом через
+  // max-width:100% — в координату исходного снимка через
+  // naturalWidth/naturalHeight). Можно кликать несколько раз в разных
+  // местах — каждый клик добавляет отдельный шаг по порядку.
   previewEl.addEventListener('click', (event) => {
     const rect = previewEl.getBoundingClientRect();
     if (!previewEl.naturalWidth || !previewEl.naturalHeight || rect.width === 0) return;
@@ -88,22 +163,45 @@ function describeNetworkError(err) {
     naturalX = Math.min(naturalX, viewportWidth);
     naturalY = Math.min(naturalY, viewportHeight);
 
-    clickXInput.value = naturalX;
-    clickYInput.value = naturalY;
+    actions.push({ type: 'click', x: naturalX, y: naturalY });
+    renderActions();
 
-    clickMarkerEl.style.left = `${displayX}px`;
-    clickMarkerEl.style.top = `${displayY}px`;
-    clickMarkerEl.hidden = false;
+    const marker = document.createElement('div');
+    marker.className = 'click-marker';
+    marker.textContent = String(actions.length);
+    marker.style.left = `${displayX}px`;
+    marker.style.top = `${displayY}px`;
+    previewWrapperEl.appendChild(marker);
 
     setStatus(
-      `Точка клика выбрана: X=${naturalX}, Y=${naturalY}. Нажмите «Сделать скриншот» ещё раз, чтобы применить клик.`,
+      `Шаг ${actions.length} «Клик (X=${naturalX}, Y=${naturalY})» добавлен в сценарий. Можно добавить ещё шаги или нажать «Сделать скриншот».`,
       'ok'
     );
   });
 
+  addScrollBtn.addEventListener('click', () => {
+    let amount = Number(addScrollAmountInput.value);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setStatus('Укажите положительное число пикселей для прокрутки.', 'error');
+      return;
+    }
+    amount = Math.min(Math.round(amount), 20000);
+    actions.push({ type: 'scroll', amount });
+    addScrollAmountInput.value = '';
+    renderActions();
+    setStatus(`Шаг ${actions.length} «Прокрутка на ${amount} px» добавлен в сценарий.`, 'ok');
+  });
+
+  clearActionsBtn.addEventListener('click', () => {
+    actions = [];
+    renderActions();
+    clearMarkers();
+    setStatus('Сценарий очищен.', 'ok');
+  });
+
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
-    clickMarkerEl.hidden = true;
+    clearMarkers();
 
     const payload = {
       url: document.getElementById('url').value,
@@ -114,9 +212,7 @@ function describeNetworkError(err) {
       delay: document.getElementById('delay').value,
       timeout: document.getElementById('timeout').value,
       waitUntil: document.getElementById('waitUntil').value,
-      scrollY: document.getElementById('scrollY').value,
-      clickX: document.getElementById('clickX').value,
-      clickY: document.getElementById('clickY').value,
+      actions,
     };
 
     submitBtn.disabled = true;
