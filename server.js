@@ -16,6 +16,10 @@ const MIN_TIMEOUT_S = 5;
 const MAX_TIMEOUT_S = 120;
 const DEFAULT_TIMEOUT_S = 45;
 const MAX_SCROLL_PX = 20000; // прокрутка вниз перед снимком
+const SCROLL_STEP_PX = 700;
+const SCROLL_STEP_DELAY_MS = 400;
+const SCROLL_STEP_NETWORKIDLE_MS = 800;
+const SCROLL_FINAL_NETWORKIDLE_MS = 3000;
 const WAIT_STRATEGIES = new Set(['load', 'domcontentloaded', 'networkidle']);
 
 function clamp(value, min, max, fallback) {
@@ -97,6 +101,28 @@ async function openPage(targetUrl, { width, height, waitUntil, navTimeoutMs, del
   return { browser, page };
 }
 
+// Прокручивает страницу вниз небольшими шагами (как реальный пользователь),
+// с паузой и попыткой дождаться "тишины в сети" после каждого шага. Многие
+// сайты (например, списки результатов поиска) подгружают контент отдельными
+// порциями через API по мере прокрутки (infinite scroll) — один большой
+// "прыжок" вниз и короткая фиксированная пауза этого не дожидаются, и часть
+// карточек остаётся в виде "заглушек" (skeleton/shimmer-плейсхолдеры).
+// Пошаговая прокрутка даёт каждой такой подгрузке шанс сработать и успеть
+// отрисоваться, прежде чем мы пойдём дальше вниз.
+async function scrollPageDown(page, targetY) {
+  let scrolled = 0;
+  while (scrolled < targetY) {
+    const step = Math.min(SCROLL_STEP_PX, targetY - scrolled);
+    await page.evaluate((y) => window.scrollBy(0, y), step);
+    scrolled += step;
+    await page.waitForTimeout(SCROLL_STEP_DELAY_MS);
+    await page.waitForLoadState('networkidle', { timeout: SCROLL_STEP_NETWORKIDLE_MS }).catch(() => {});
+  }
+  // Финальная более долгая пауза — на случай, если последняя порция
+  // контента ещё дозагружается после того, как мы дошли до цели.
+  await page.waitForLoadState('networkidle', { timeout: SCROLL_FINAL_NETWORKIDLE_MS }).catch(() => {});
+}
+
 function readCommonParams(body) {
   const width = clamp(body?.width, MIN_SIZE, MAX_SIZE, 1280);
   const height = clamp(body?.height, MIN_SIZE, MAX_SIZE, 800);
@@ -129,12 +155,10 @@ app.post('/api/screenshot', async (req, res) => {
       // Прокручиваем страницу вниз на заданное число пикселей — это
       // сдвигает область для обычного снимка (например, чтобы убрать из
       // кадра "прилипшую" шапку/баннер) и заодно помогает подгрузить
-      // "ленивый" контент (изображения, которые появляются только при
-      // прокрутке) перед снимком всей страницы.
-      await page.evaluate((y) => window.scrollBy(0, y), scrollY);
-      // Даём странице немного времени отрисовать то, что подгрузилось
-      // после прокрутки (анимации, ленивая загрузка изображений).
-      await page.waitForTimeout(300);
+      // "ленивый" контент (карточки/изображения, которые появляются только
+      // при прокрутке) перед снимком всей страницы. Делаем это шагами, а не
+      // одним прыжком — см. scrollPageDown.
+      await scrollPageDown(page, scrollY);
     }
 
     const buffer = await page.screenshot({
