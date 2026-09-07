@@ -28,6 +28,16 @@ function clamp(value, min, max, fallback) {
   return Math.min(max, Math.max(min, Math.round(n)));
 }
 
+// Как clamp(), но для необязательных полей: если значение не передано (или
+// не число), возвращает null, а не какое-то дефолтное число — так можно
+// отличить "клик не нужен" от "клик по координате 0".
+function clampOptional(value, min, max) {
+  if (value === undefined || value === null || value === '') return null;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  return Math.min(max, Math.max(min, Math.round(n)));
+}
+
 function normalizeUrl(raw) {
   if (typeof raw !== 'string' || !raw.trim()) {
     throw new Error('Укажите адрес страницы');
@@ -137,6 +147,12 @@ app.post('/api/screenshot', async (req, res) => {
   const common = readCommonParams(req.body);
   const shotFormat = format === 'jpeg' ? 'jpeg' : 'png';
   const scrollY = clamp(req.body?.scrollY, 0, MAX_SCROLL_PX, 0);
+  // Координаты клика — относительно окна браузера (common.width x
+  // common.height), то есть именно то, что видно на итоговом снимке (без
+  // "Вся страница целиком") или в текущей прокрученной области (с ней).
+  const clickX = clampOptional(req.body?.clickX, 0, common.width);
+  const clickY = clampOptional(req.body?.clickY, 0, common.height);
+  const hasClick = clickX !== null && clickY !== null;
 
   let targetUrl;
   try {
@@ -159,6 +175,18 @@ app.post('/api/screenshot', async (req, res) => {
       // при прокрутке) перед снимком всей страницы. Делаем это шагами, а не
       // одним прыжком — см. scrollPageDown.
       await scrollPageDown(page, scrollY);
+    }
+
+    if (hasClick) {
+      // Клик "вслепую" по координатам (без поиска элемента под курсором) —
+      // работает даже если под точкой лежит что-то нестандартное, и не
+      // падает с ошибкой, если там в итоге ничего интерактивного не
+      // окажется. Выполняется после прокрутки и прямо перед снимком, чтобы
+      // визуальный эффект клика (открывшееся меню/подсказка, закрывшийся
+      // баннер) гарантированно попал в кадр.
+      await page.mouse.click(clickX, clickY);
+      await page.waitForTimeout(300);
+      await page.waitForLoadState('networkidle', { timeout: 1500 }).catch(() => {});
     }
 
     const buffer = await page.screenshot({

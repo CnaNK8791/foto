@@ -68,6 +68,8 @@ function describeNetworkError(err) {
       timeout: document.getElementById('timeout').value,
       waitUntil: document.getElementById('waitUntil').value,
       scrollY: document.getElementById('scrollY').value,
+      clickX: document.getElementById('clickX').value,
+      clickY: document.getElementById('clickY').value,
     };
 
     submitBtn.disabled = true;
