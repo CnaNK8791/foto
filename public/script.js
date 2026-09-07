@@ -44,6 +44,11 @@ function describeNetworkError(err) {
   const resultEl = document.getElementById('shot-result');
   const previewEl = document.getElementById('preview');
   const downloadLink = document.getElementById('download-link');
+  const clickMarkerEl = document.getElementById('click-marker');
+  const clickXInput = document.getElementById('clickX');
+  const clickYInput = document.getElementById('clickY');
+  const widthInput = document.getElementById('width');
+  const heightInput = document.getElementById('height');
 
   let lastObjectUrl = null;
 
@@ -55,8 +60,50 @@ function describeNetworkError(err) {
 
   warnIfOpenedAsFile(setStatus);
 
+  // Клик по превью скриншота: переводим координату клика мышью (в
+  // отображаемых на странице пикселях картинки, которая может быть
+  // уменьшена CSS'ом через max-width:100%) в координату исходного снимка
+  // (naturalWidth/naturalHeight) и подставляем в поля clickX/clickY —
+  // дальше пользователь просто жмёт "Сделать скриншот" ещё раз, чтобы
+  // применить клик по-настоящему (в браузере на сервере).
+  previewEl.addEventListener('click', (event) => {
+    const rect = previewEl.getBoundingClientRect();
+    if (!previewEl.naturalWidth || !previewEl.naturalHeight || rect.width === 0) return;
+
+    const displayX = event.clientX - rect.left;
+    const displayY = event.clientY - rect.top;
+    const scaleX = previewEl.naturalWidth / rect.width;
+    const scaleY = previewEl.naturalHeight / rect.height;
+
+    let naturalX = Math.round(displayX * scaleX);
+    let naturalY = Math.round(displayY * scaleY);
+
+    // Сам клик на сервере выполняется по текущему окну браузера
+    // (viewport), а превью может показывать снимок ВСЕЙ страницы (она
+    // выше окна) — ограничиваем координаты размером окна, иначе клик
+    // окажется за пределами того, что реально видно на сервере в момент
+    // клика.
+    const viewportWidth = Number(widthInput.value) || naturalX;
+    const viewportHeight = Number(heightInput.value) || naturalY;
+    naturalX = Math.min(naturalX, viewportWidth);
+    naturalY = Math.min(naturalY, viewportHeight);
+
+    clickXInput.value = naturalX;
+    clickYInput.value = naturalY;
+
+    clickMarkerEl.style.left = `${displayX}px`;
+    clickMarkerEl.style.top = `${displayY}px`;
+    clickMarkerEl.hidden = false;
+
+    setStatus(
+      `Точка клика выбрана: X=${naturalX}, Y=${naturalY}. Нажмите «Сделать скриншот» ещё раз, чтобы применить клик.`,
+      'ok'
+    );
+  });
+
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
+    clickMarkerEl.hidden = true;
 
     const payload = {
       url: document.getElementById('url').value,
