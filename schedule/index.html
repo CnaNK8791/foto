@@ -683,7 +683,6 @@ function rowHTML(x, o) {
     : [
       `<span class="chip kind">${x.kind === "hw" ? "ДЗ" : "урок"}</span>`,
       `<span class="chip course">${esc(SHORT[x.course] || x.course)}</span>`,
-      x.kind === "lesson" && !x.dur ? `<span class="chip est">≈ оценка</span>` : "",
       `<span class="chip est">${x.kind === "hw" ? "выдано" : "вышел"} ${fmt(x.date)}</span>`,
     ].join("");
   const btn = o.done
