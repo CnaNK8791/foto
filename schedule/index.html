@@ -216,6 +216,11 @@ input[type=date]{font-family:var(--f-mono)}
 .chip.est{color:var(--dim);border:1px dashed rgba(255,255,255,.12)}
 .emin{grid-column:2;font-family:var(--f-mono);font-size:11px;color:var(--accent-2);white-space:normal;font-variant-numeric:tabular-nums}
 .emin:empty{display:none}
+.sub{grid-column:1 / -1;display:grid;grid-template-columns:auto minmax(0,1fr);gap:2px 7px;align-items:start;margin-top:4px;padding-top:6px;border-top:1px dashed rgba(255,255,255,.1)}
+.sub .check{margin-top:1px}
+.sub .t{color:#c9c2bc;font-weight:500;font-size:11.5px}
+.sub .chip.kind{color:#a8a19b}
+.entry.done .sub .t{color:var(--dim)}
 .emin small{color:var(--dim);font-size:9.5px;margin-left:5px;white-space:nowrap}
 .slim{display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:12px;border:1px dashed var(--line);color:var(--dim);font-size:12px;flex-wrap:wrap}
 .slim b{font-family:var(--f-mono);font-weight:600;color:var(--muted);font-size:11px}
@@ -661,33 +666,37 @@ function renderCal() {
   }
 }
 
-function entryHTML(e) {
-  const x = e.item;
-  const chips = [
-    `<span class="chip kind">${x.kind === "hw" ? "ДЗ" : "урок"}</span>`,
-    `<span class="chip course">${esc(SHORT[x.course] || x.course)}</span>`,
-    e.part ? `<span class="chip part">часть ${e.part}</span>` : "",
-    x.kind === "lesson" && !x.dur ? `<span class="chip est">≈ оценка</span>` : "",
-    `<span class="chip est">${x.kind === "hw" ? "выдано" : "вышел"} ${fmt(x.date)}</span>`,
-  ].join("");
-  const full = cost(x);
-  return `<li class="entry ${x.kind} ${subj(x)}">
-    <button class="check" data-done="${x.id}" aria-label="Отметить «${esc(x.title)}» выполненным" title="Готово">✓</button>
-    <div class="etitle"><div class="t" title="${esc(x.title)}">${esc(x.title)}</div><div class="m">${chips}</div></div>
-    <div class="emin">${e.min ? hm(e.min) : ""}${e.part ? `<small>из ${hm(full)}</small>` : x.kind === "lesson" && S.speed !== 1 ? `<small>×${S.speed}</small>` : ""}</div>
-  </li>`;
+function rowHTML(x, o) {
+  const chips = o.done
+    ? `<span class="chip kind">${x.kind === "hw" ? "ДЗ" : "урок"}</span><span class="chip course">${esc(SHORT[x.course] || x.course)}</span>`
+    : [
+      `<span class="chip kind">${x.kind === "hw" ? "ДЗ" : "урок"}</span>`,
+      `<span class="chip course">${esc(SHORT[x.course] || x.course)}</span>`,
+      x.kind === "lesson" && !x.dur ? `<span class="chip est">≈ оценка</span>` : "",
+      `<span class="chip est">${x.kind === "hw" ? "выдано" : "вышел"} ${fmt(x.date)}</span>`,
+    ].join("");
+  const btn = o.done
+    ? `<button class="check" data-undo="${x.id}" aria-label="Вернуть «${esc(x.title)}» в план" title="Вернуть в план">✓</button>`
+    : `<button class="check" data-done="${x.id}" aria-label="Отметить «${esc(x.title)}» выполненным" title="Готово">✓</button>`;
+  const min = o.min ? hm(o.min) + (!o.done && x.kind === "lesson" && S.speed !== 1 ? `<small>×${S.speed}</small>` : "") : "";
+  return `${btn}<div class="etitle"><div class="t" title="${esc(x.title)}">${esc(x.title)}</div><div class="m">${chips}</div></div><div class="emin">${min}</div>`;
+}
+// видео и его ДЗ в одной карточке
+function listHTML(rows, done) {
+  const used = new Set(), out = [];
+  rows.forEach(r => {
+    if (used.has(r.item.id)) return;
+    used.add(r.item.id);
+    const subs = r.item.kind === "lesson" ? rows.filter(h => h.item.kind === "hw" && h.item.dep === r.item.id && !used.has(h.item.id)) : [];
+    subs.forEach(h => used.add(h.item.id));
+    out.push(`<li class="entry ${r.item.kind} ${subj(r.item)}${done ? " done" : ""}${subs.length ? " grp" : ""}">${rowHTML(r.item, { min: r.min, done })}${subs.map(h => `<div class="sub">${rowHTML(h.item, { min: h.min, done })}</div>`).join("")}</li>`);
+  });
+  return out.join("");
 }
 
 const mondayOf = s => addDays(s, -dow(s));
 let weekStart = null;
 
-function doneHTML(x) {
-  return `<li class="entry ${x.kind} ${subj(x)} done">
-    <button class="check" data-undo="${x.id}" aria-label="Вернуть «${esc(x.title)}» в план" title="Вернуть в план">✓</button>
-    <div class="etitle"><div class="t">${esc(x.title)}</div><div class="m"><span class="chip kind">${x.kind === "hw" ? "ДЗ" : "урок"}</span><span class="chip course">${esc(SHORT[x.course] || x.course)}</span></div></div>
-    <div class="emin">${cost(x) ? hm(cost(x)) : ""}</div>
-  </li>`;
-}
 
 function renderPlan() {
   const box = $("view-plan"); const t = todayISO();
@@ -715,8 +724,8 @@ function renderPlan() {
     let body = "";
     if (date === t && S.askAdd && plan.locked && S.lock && !S.lock.declined && doneMin > 0 && plan.nextPick)
       body += `<div class="askbar"><span>Добавить ещё занятие на сегодня? Следующее: «${esc(plan.nextPick.title.length > 48 ? plan.nextPick.title.slice(0, 46) + "…" : plan.nextPick.title)}», ${hm(plan.nextPick.min)}.</span><div class="askbtns"><button class="btn mini" data-ask="yes">Добавить</button><button class="ghost" data-ask="no">Нет</button></div></div>`;
-    if (entries.length) body += `<ul class="entries">${entries.map(entryHTML).join("")}</ul>`;
-    if (done.length) body += `${entries.length ? `<div class="donesep">просмотрено</div>` : ""}<ul class="entries" style="margin-top:${entries.length ? 0 : 8}px">${done.map(doneHTML).join("")}</ul>`;
+    if (entries.length) body += `<ul class="entries">${listHTML(entries, false)}</ul>`;
+    if (done.length) body += `${entries.length ? `<div class="donesep">просмотрено</div>` : ""}<ul class="entries" style="margin-top:${entries.length ? 0 : 8}px">${listHTML(done.map(x => ({ item: x, min: cost(x) })), true)}</ul>`;
     if (!body) body = `<div class="empty">${past ? "—" : isOff ? "выходной" : date < plan.start ? "до начала плана" : plan.total ? "свободно: новые уроки ещё не вышли" : "всё сделано"}</div>`;
     cols.push(`<article class="day ${date === t ? "is-today" : ""} ${past ? "past" : ""} ${isOff && !past ? "offday" : ""}">
       <div class="colhead">
