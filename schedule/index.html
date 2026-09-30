@@ -452,7 +452,7 @@ function seedMath(it) {
   const M = (t, d, du) => (last = a(L("math", t, d, du)));
   const HM = (t, d, dep, deadline = null) => a(H("math", t, d, deadline, dep));
   const Z = (t, d) => HM(t, d, last); // ДЗ к последнему добавленному видео
-  const log1 = M("Логика. Утверждение и отрицание. Доказательство от противного","2026-07-06",dur(0,54,42));
+  const log1 = M("Логика. Утверждение и отрицание. Доказательство от противного","2026-07-06",dur(2,54,42));
   HM("ДЗ-1 | №20 | Логика. Утверждение и отрицание. Метод от противного. Принцип крайнего","2026-07-06",log1);
   M("Методы решения линейных уравнений и линейные уравнения с параметром | Часть-1 | №7,8,12,14,19","2026-07-07",dur(1,43,47));
   Z("ДЗ-2 | №7,8,12,14,19 | Линейные уравнения и линейная функция | Часть 1","2026-07-07");
@@ -491,7 +491,7 @@ function seedMath(it) {
 }
 
 const DEFAULTS = { week:[120,120,120,120,120,240,180], off:[], speed:1, hwMin:45, planMin:90, minChunk:20, incHW:true, start:"", mathPct:50, askAdd:true, lock:null };
-const DATA_VER = 3;
+const DATA_VER = 4;
 const KEY = "orbita-ege-v1";
 let S, items;
 function applyState(o) {
@@ -499,6 +499,8 @@ function applyState(o) {
   items.forEach(x => { if (x.done && x.doneDate === undefined) x.doneDate = todayISO(); });
   uid = items.reduce((m, x) => Math.max(m, +x.id.slice(1) || 0), 0);
   if ((o.ver || 1) < 2 && !items.some(x => x.course === "math")) seedMath(items);
+  // v4: исправлена длина первого урока логики (2:54:42)
+  if ((o.ver || 1) < 4) items.forEach(x => { if (x.course === "math" && x.kind === "lesson" && x.date === "2026-07-06" && x.dur === 55) x.dur = 175; });
   // v3: проверенные ДЗ по математике возвращаются в план и привязываются к своему видео
   if ((o.ver || 1) < 3) items.forEach(x => {
     if (x.course === "math" && x.kind === "hw" && x.done && x.doneDate === "") {
