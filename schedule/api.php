@@ -16,9 +16,14 @@ header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
 header('X-Content-Type-Options: nosniff');
 
+// Всегда отвечаем кодом 200: многие хостинги подменяют ответы 4xx/5xx своей HTML-страницей,
+// и страница не смогла бы прочитать ошибку. Сама ошибка лежит в поле "error".
 function out(array $payload, int $code = 200): void
 {
-    http_response_code($code);
+    http_response_code(200);
+    if ($code !== 200) {
+        $payload['status'] = $code;
+    }
     echo json_encode($payload, JSON_UNESCAPED_UNICODE);
     exit;
 }

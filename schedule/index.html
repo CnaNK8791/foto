@@ -641,7 +641,7 @@ async function api(action, body) {
   const r = await fetch("api.php?action=" + action, opt);
   const text = await r.text();
   let j = null; try { j = JSON.parse(text); } catch (e) {}
-  return { ok: r.ok, status: r.status, j, text };
+  return { ok: r.ok && !!j && !j.error, status: r.status, j, text };
 }
 const AUTH_ERR = { wrong_credentials: "Неверный логин или пароль", login_taken: "Такой логин уже занят", bad_login: "Логин: от 3 до 64 символов, без пробелов", bad_password: "Пароль: не короче 6 символов", not_configured: "Сервер не настроен: нет config.php", db_error: "Ошибка базы данных, проверьте config.php" };
 async function tryServer() {
@@ -649,9 +649,15 @@ async function tryServer() {
   let res; try { res = await api("me"); } catch (e) { localReason = "не удалось обратиться к api.php"; return false; }
   const { ok, status, j, text } = res;
   // рядом нет api.php (404 или сервер отдал обычную HTML-страницу) — работаем без сервера
-  if (status === 404 || (!j && /^\s*<(!doctype|html)/i.test(text))) { localReason = "рядом со страницей нет api.php"; return false; }
+  if (status === 404) { localReason = "рядом со страницей нет api.php"; return false; }
+  if (!j && /^\s*<(!doctype|html)/i.test(text)) {
+    // сервер вернул HTML: на обычном хостинге это страница ошибки, а не отсутствие файла
+    if (status >= 400) { serverMode = true; apiProblem = "сервер вернул страницу ошибки " + status; setAcct("apierr", "Сервер"); return true; }
+    localReason = "рядом со страницей нет api.php"; return false;
+  }
   if (!j) { serverMode = true; apiProblem = status >= 500 ? "ошибка PHP " + status : "ответ не JSON — PHP не включён?"; setAcct("apierr", "Сервер"); return true; }
   if (j && j.error === "not_configured") { serverMode = true; setupAuth(); setAcct("nocfg", "Сервер"); return true; }
+  if (j && j.error) { serverMode = true; apiProblem = AUTH_ERR[j.error] || j.error; setAcct("apierr", "Сервер"); return true; }
   if (!ok || !j || !("user" in j)) return false;
   serverMode = true; setupAuth();
   if (j.user) await serverLogin(j.user.login); else { setAcct("guest"); showAuth(true); }
@@ -661,7 +667,7 @@ async function serverLogin(login) {
   acctName = login; setAcct("sync", login); showAuth();
   const { ok, j } = await api("load");
   if (!ok) { setAcct("err", login); return; }
-  cloudRef = { set: async data => { const r = await api("save", { data }); if (!r.ok) throw { code: r.status === 401 ? "logged_out" : "unavailable" }; } };
+  cloudRef = { set: async data => { const r = await api("save", { data }); if (!r.ok) throw { code: r.j && r.j.error === "not_logged_in" ? "logged_out" : "unavailable" }; } };
   if (j && j.data && Array.isArray(j.data.items)) {
     applyState(j.data);
     try { localStorage.setItem(KEY, JSON.stringify({ ver: DATA_VER, S, items })); } catch (e) {}
