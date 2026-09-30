@@ -524,12 +524,12 @@ function seedMath(it) {
   HM("ДЗ-16 | №7,8 | Логарифмы и степени","2026-08-27",lg);
   const lgu = M("№7,14 Логарифмические и показательные уравнения","2026-08-27",dur(1,17,18));
   HM("ДЗ-17 | №7,14 | Показательные и логарифмические уравнения","2026-08-27",lgu);
-  const ur2 = M("Методы решения уравнений. Дробно-рациональные, однородные, иррациональные уравнения. Уравнения высших степеней | Часть-2 | №7,8,14,16,19","2026-08-27");
+  const ur2 = M("Методы решения уравнений. Дробно-рациональные, однородные, иррациональные уравнения. Уравнения высших степеней | Часть-2 | №7,8,14,16,19","2026-08-27",175);
   HM("ДЗ-18 | №7,8,14,16,19 | Разные методы решения уравнений | Часть 2","2026-08-27",ur2);
 }
 
 const DEFAULTS = { week:[120,120,120,120,120,240,180], off:[], speed:1, hwMin:45, planMin:90, minChunk:20, incHW:true, start:"", mathPct:50, askAdd:true, split:false, lock:null };
-const DATA_VER = 6;
+const DATA_VER = 7;
 const KEY = "orbita-ege-v1";
 let S, items;
 function applyState(o) {
@@ -537,6 +537,8 @@ function applyState(o) {
   items.forEach(x => { if (x.done && x.doneDate === undefined) x.doneDate = todayISO(); });
   uid = items.reduce((m, x) => Math.max(m, +x.id.slice(1) || 0), 0);
   if ((o.ver || 1) < 2 && !items.some(x => x.course === "math")) seedMath(items);
+  // v7: длина «Методы решения уравнений… Часть-2» — 2:55
+  if ((o.ver || 1) < 7) items.forEach(x => { if (x.course === "math" && x.kind === "lesson" && x.date === "2026-08-27" && !x.dur && x.title.includes("Часть-2")) x.dur = 175; });
   // v6: длина вебинара по теории вероятностей — 4 часа
   if ((o.ver || 1) < 6) items.forEach(x => { if (x.course === "math2" && x.kind === "lesson" && x.date === "2026-09-19" && !x.dur) x.dur = 240; });
   // v5: годовой курс математики
