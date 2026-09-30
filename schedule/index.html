@@ -580,7 +580,7 @@ function entryHTML(e) {
     `<span class="chip course">${esc(SHORT[x.course] || x.course)}</span>`,
     e.part ? `<span class="chip part">часть ${e.part}</span>` : "",
     x.kind === "lesson" && !x.dur ? `<span class="chip est">≈ оценка</span>` : "",
-    x.individual ? `<span class="chip est">инд. срок 5 дн.</span>` : "",
+    x.kind === "hw" ? `<span class="chip est">выдано ${fmt(x.date)}</span>` : "",
     e.dl ? `<span class="chip dl">до ${fmt(e.dl)}</span>` : "",
     e.late ? `<span class="chip late">после дедлайна</span>` : ""
   ].join("");
