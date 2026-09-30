@@ -200,6 +200,12 @@ input[type=date]{font-family:var(--f-mono)}
 .entry .check{margin-top:1px}
 .entry.lesson:not(.done){box-shadow:inset 2px 0 0 var(--accent)}
 .entry.hw:not(.done){box-shadow:inset 2px 0 0 rgba(255,122,26,.45)}
+/* запланированные (ещё не вышедшие) уроки — неброско */
+.entry.lesson.planned:not(.done){background:rgba(255,255,255,.025);box-shadow:inset 2px 0 0 rgba(255,255,255,.14)}
+.entry.planned:not(.done) > .etitle .t{color:var(--muted);font-weight:500}
+.entry.planned:not(.done) > .etitle .chip{color:var(--dim);border-color:rgba(255,255,255,.08)}
+.entry.planned:not(.done) > .check{border-color:rgba(255,255,255,.18)}
+.chip.plan{color:var(--muted);background:rgba(255,255,255,.07);text-transform:lowercase}
 .check{all:unset;cursor:pointer;width:16px;height:16px;border-radius:5px;border:1.5px solid var(--line-hi);display:grid;place-items:center;color:transparent;font-size:11px}
 .check:hover{background:rgba(255,122,26,.15);color:var(--accent)}
 .etitle{min-width:0}
@@ -771,7 +777,7 @@ function rowHTML(x, o) {
       `<span class="chip kind">${x.kind === "hw" ? "ДЗ" : "урок"}</span>`,
       `<span class="chip course">${esc(SHORT[x.course] || x.course)}</span>`,
       partChip,
-      x.date > todayISO() ? "" : `<span class="chip est">${x.kind === "hw" ? "выдано" : "вышел"} ${fmt(x.date)}</span>`,
+      x.date > todayISO() ? (x.kind === "lesson" ? `<span class="chip plan">запланировано</span>` : "") : `<span class="chip est">${x.kind === "hw" ? "выдано" : "вышел"} ${fmt(x.date)}</span>`,
     ].join("");
   const T = esc(dispTitle(x));
   let btn;
@@ -793,7 +799,7 @@ function listHTML(rows, done, removable) {
     const host = r.item.kind === "lesson" && (done ? r.prog == null : !r.part || r.final);
     const subs = host ? rows.map((h, hi) => [h, hi]).filter(([h, hi]) => !used.has(hi) && h.item.kind === "hw" && h.item.dep === r.item.id) : [];
     subs.forEach(([, hi]) => used.add(hi));
-    out.push(`<li class="entry ${r.item.kind} ${subj(r.item)}${done ? " done" : ""}${subs.length ? " grp" : ""}">${rowHTML(r.item, { ...r, done })}${subs.map(([h]) => `<div class="sub">${rowHTML(h.item, { ...h, done })}</div>`).join("")}${removable && !done ? `<button class="rm" data-rm="${r.item.id}" title="Перенести на следующие дни">убрать из сегодняшнего дня</button>` : ""}</li>`);
+    out.push(`<li class="entry ${r.item.kind} ${subj(r.item)}${done ? " done" : ""}${r.item.date > todayISO() ? " planned" : ""}${subs.length ? " grp" : ""}">${rowHTML(r.item, { ...r, done })}${subs.map(([h]) => `<div class="sub">${rowHTML(h.item, { ...h, done })}</div>`).join("")}${removable && !done ? `<button class="rm" data-rm="${r.item.id}" title="Перенести на следующие дни">убрать из сегодняшнего дня</button>` : ""}</li>`);
   });
   return out.join("");
 }
