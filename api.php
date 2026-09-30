@@ -100,6 +100,28 @@ function cleanPassword($pass): string
 
 try {
     switch ($action) {
+        case 'check':
+            // диагностика: api.php?action=check — что с подключением и таблицами
+            $r = ['php' => PHP_VERSION, 'pdo_mysql' => extension_loaded('pdo_mysql')];
+            db();
+            $r['connect'] = 'ok';
+            $need = ['users' => ['id', 'login', 'pass_hash', 'created_at'], 'plans' => ['user_id', 'data', 'updated_at']];
+            foreach ($need as $table => $cols) {
+                try {
+                    $st = db()->query("SELECT * FROM `$table` LIMIT 0");
+                    $have = [];
+                    for ($i = 0; $i < $st->columnCount(); $i++) {
+                        $meta = $st->getColumnMeta($i);
+                        $have[] = $meta['name'] ?? '';
+                    }
+                    $missing = array_values(array_diff($cols, $have));
+                    $r['tables'][$table] = $missing ? 'нет колонок: ' . implode(', ', $missing) : 'ok';
+                } catch (PDOException $e) {
+                    $r['tables'][$table] = 'нет таблицы';
+                }
+            }
+            out($r);
+
         case 'me':
             $uid = $_SESSION['uid'] ?? null;
             if (!$uid) {
@@ -194,6 +216,17 @@ try {
         $reason = 'db_host';
     } elseif ($e->getCode() === '42S02' || strpos($msg, '1146') !== false || stripos($msg, 'no such table') !== false) {
         $reason = 'db_tables';
+    } elseif (stripos($msg, 'could not find driver') !== false) {
+        $reason = 'db_driver';
+    } elseif ($e->getCode() === '42S22' || preg_match('/\b1054\b/', $msg)) {
+        $reason = 'db_columns';
+    } elseif (preg_match('/\b(1142|1227)\b/', $msg)) {
+        $reason = 'db_rights';
     }
-    out(['error' => $reason], 500);
+    // код ошибки (без текста и паролей) помогает понять причину
+    $detail = (string)$e->getCode();
+    if (preg_match('/\b(1\d{3}|2\d{3})\b/', $msg, $m)) {
+        $detail .= '/' . $m[1];
+    }
+    out(['error' => $reason, 'detail' => $detail], 500);
 }

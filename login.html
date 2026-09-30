@@ -134,7 +134,10 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--accent-2);outline-o
     db_name: "Нет базы с таким именем: проверьте name в config.php",
     db_host: "Не удаётся подключиться к серверу базы: проверьте host в config.php",
     db_tables: "В базе нет таблиц: выполните schema.sql в phpMyAdmin",
-    db_error: "Ошибка базы данных, проверьте config.php"
+    db_error: "Ошибка базы данных, проверьте config.php",
+    db_driver: "На хостинге не включён PHP-модуль pdo_mysql",
+    db_columns: "Таблица в базе другой структуры: удалите users и plans и выполните schema.sql заново",
+    db_rights: "У пользователя базы нет прав на эту операцию"
   };
   let mode = "login";
 
@@ -175,7 +178,7 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--accent-2);outline-o
     $("submit").disabled = true; msg.textContent = "";
     try {
       const { ok, j } = await api(mode, { login, password });
-      if (!ok) { msg.textContent = ERR[j && j.error] || "Не получилось, попробуй ещё раз"; return; }
+      if (!ok) { msg.textContent = (ERR[j && j.error] || "Не получилось, попробуй ещё раз") + (j && j.detail ? " (код " + j.detail + ")" : ""); return; }
       msg.className = "msg ok"; msg.textContent = mode === "register" ? "Аккаунт создан" : "Готово";
       try {
         sessionStorage.removeItem("orbita-guest");
@@ -189,7 +192,7 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--accent-2);outline-o
   // уже вошёл — сразу к расписанию; сервер не настроен — показываем причину
   api("me").then(({ j }) => {
     if (j && j.user) location.replace("index.html");
-    else if (j && j.error) $("msg").textContent = ERR[j.error] || j.error;
+    else if (j && j.error) $("msg").textContent = (ERR[j.error] || j.error) + (j.detail ? " (код " + j.detail + ")" : "");
   }).catch(() => { $("msg").textContent = "api.php не отвечает"; });
 
   // фон: нейросеть
