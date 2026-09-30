@@ -54,7 +54,7 @@ header.top{display:flex;align-items:center;justify-content:space-between;gap:16p
 .brand small{display:block;color:var(--muted);font-size:12px;letter-spacing:.08em;text-transform:uppercase}
 .acct{display:flex;align-items:center;gap:9px;margin-left:auto;padding:6px 12px;border-radius:12px;background:var(--glass);border:1px solid var(--line);min-width:0}
 .acct b{display:block;font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:22ch}
-.acct small{display:block;font-family:var(--f-mono);font-size:10px;color:var(--muted);white-space:nowrap}
+.acct small{display:block;font-family:var(--f-mono);font-size:10px;color:var(--muted);max-width:52ch;overflow-wrap:anywhere}
 .acct .dot{width:8px;height:8px;border-radius:50%;background:var(--dim);flex:none}
 .acct[data-state="ok"] .dot{background:var(--ok);box-shadow:0 0 8px var(--ok)}
 .acct[data-state="sync"] .dot{background:var(--accent-2);box-shadow:0 0 8px var(--accent)}
@@ -649,11 +649,12 @@ async function tryServer() {
   let res; try { res = await api("me"); } catch (e) { localReason = "не удалось обратиться к api.php"; return false; }
   const { ok, status, j, text } = res;
   // рядом нет api.php (404 или сервер отдал обычную HTML-страницу) — работаем без сервера
-  if (status === 404) { localReason = "рядом со страницей нет api.php"; return false; }
+  const apiUrl = new URL("api.php?action=me", location.href).href;
+  if (status === 404) { localReason = "api.php не найден (404): " + apiUrl; return false; }
   if (!j && /^\s*<(!doctype|html)/i.test(text)) {
     // сервер вернул HTML: на обычном хостинге это страница ошибки, а не отсутствие файла
     if (status >= 400) { serverMode = true; apiProblem = "сервер вернул страницу ошибки " + status; setAcct("apierr", "Сервер"); return true; }
-    localReason = "рядом со страницей нет api.php"; return false;
+    localReason = "вместо api.php сервер вернул HTML-страницу (" + status + "): " + apiUrl; return false;
   }
   if (!j) { serverMode = true; apiProblem = status >= 500 ? "ошибка PHP " + status : "ответ не JSON — PHP не включён?"; setAcct("apierr", "Сервер"); return true; }
   if (j && j.error === "not_configured") { serverMode = true; setupAuth(); setAcct("nocfg", "Сервер"); return true; }
