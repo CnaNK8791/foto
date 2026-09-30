@@ -155,7 +155,10 @@ input[type=date]{font-family:var(--f-mono)}
 .colhead .row2{display:flex;align-items:center;gap:6px}
 .colhead .load{flex:1;width:auto}
 .empty{margin:auto 0;text-align:center;font-size:12px;color:var(--dim);padding:18px 4px}
-.entry.math:not(.done){background:rgba(18,38,78,.35)}
+.entry.math.lesson:not(.done){background:rgba(18,38,78,.35)}
+.entry.hw:not(.done){background:rgba(140,136,132,.13)}
+.entry.hw:not(.done) .t{color:#c9c2bc}
+.entry.hw:not(.done) .chip.kind{color:#a8a19b}
 .entry.math.lesson:not(.done){box-shadow:inset 2px 0 0 var(--math)}
 .entry.math.hw:not(.done){box-shadow:inset 2px 0 0 rgba(61,139,255,.45)}
 .entry.math:not(.done) .chip.kind,.entry.math:not(.done) .emin{color:var(--math-2)}
