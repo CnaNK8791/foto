@@ -635,10 +635,16 @@ let acctName = "";
 
 /* ---------- свой сервер: PHP + MySQL (api.php рядом со страницей) ---------- */
 let serverMode = false, apiProblem = "", localReason = "";
+// папка страницы: при адресе вида «/schedule» без слеша api.php всё равно ищем внутри неё
+function apiBase() {
+  const path = location.pathname;
+  const dir = path.endsWith("/") || /\.[a-z0-9]+$/i.test(path) ? path.replace(/[^/]*$/, "") : path + "/";
+  return location.origin + dir;
+}
 async function api(action, body) {
   const opt = { credentials: "same-origin", headers: { "X-Requested-With": "orbita" } };
   if (body) { opt.method = "POST"; opt.headers["Content-Type"] = "application/json"; opt.body = JSON.stringify(body); }
-  const r = await fetch("api.php?action=" + action, opt);
+  const r = await fetch(apiBase() + "api.php?action=" + action, opt);
   const text = await r.text();
   let j = null; try { j = JSON.parse(text); } catch (e) {}
   return { ok: r.ok && !!j && !j.error, status: r.status, j, text };
@@ -649,7 +655,7 @@ async function tryServer() {
   let res; try { res = await api("me"); } catch (e) { localReason = "не удалось обратиться к api.php"; return false; }
   const { ok, status, j, text } = res;
   // рядом нет api.php (404 или сервер отдал обычную HTML-страницу) — работаем без сервера
-  const apiUrl = new URL("api.php?action=me", location.href).href;
+  const apiUrl = apiBase() + "api.php?action=me";
   if (status === 404) { localReason = "api.php не найден (404): " + apiUrl; return false; }
   if (!j && /^\s*<(!doctype|html)/i.test(text)) {
     // сервер вернул HTML: на обычном хостинге это страница ошибки, а не отсутствие файла
