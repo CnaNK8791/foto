@@ -606,7 +606,7 @@ function save() {
 let cloudRef = null, cloudBusy = false, cloudDirty = false, cloudTimer = null;
 function setAcct(state, name) {
   const el = document.getElementById("acct"); if (!el) return;
-  const txt = { local: "Вход не выполнен · только этот браузер", guest: "нажмите, чтобы войти", sync: "сохраняю…", ok: serverMode ? "сохранено в базе данных" : "сохранено в аккаунте", ro: "только просмотр · не сохраняется", err: "не удалось сохранить", nocfg: "сервер не настроен: нет config.php", apierr: "api.php не работает: " + (apiProblem || "ошибка") }[state];
+  const txt = { local: localReason ? "только этот браузер · " + localReason : "Вход не выполнен · только этот браузер", guest: "нажмите, чтобы войти", sync: "сохраняю…", ok: serverMode ? "сохранено в базе данных" : "сохранено в аккаунте", ro: "только просмотр · не сохраняется", err: "не удалось сохранить", nocfg: "сервер не настроен: нет config.php", apierr: "api.php не работает: " + (apiProblem || "ошибка") }[state];
   const lb = document.getElementById("loginBtn");
   if (lb) lb.hidden = !(serverMode && (state === "guest" || state === "err"));
   el.dataset.state = state;
@@ -634,7 +634,7 @@ async function cloudFlush() {
 let acctName = "";
 
 /* ---------- свой сервер: PHP + MySQL (api.php рядом со страницей) ---------- */
-let serverMode = false, apiProblem = "";
+let serverMode = false, apiProblem = "", localReason = "";
 async function api(action, body) {
   const opt = { credentials: "same-origin", headers: { "X-Requested-With": "orbita" } };
   if (body) { opt.method = "POST"; opt.headers["Content-Type"] = "application/json"; opt.body = JSON.stringify(body); }
@@ -645,11 +645,11 @@ async function api(action, body) {
 }
 const AUTH_ERR = { wrong_credentials: "Неверный логин или пароль", login_taken: "Такой логин уже занят", bad_login: "Логин: от 3 до 64 символов, без пробелов", bad_password: "Пароль: не короче 6 символов", not_configured: "Сервер не настроен: нет config.php", db_error: "Ошибка базы данных, проверьте config.php" };
 async function tryServer() {
-  if (!/^https?:$/.test(location.protocol)) return false;
-  let res; try { res = await api("me"); } catch (e) { return false; }
+  if (!/^https?:$/.test(location.protocol)) { localReason = "страница открыта как файл, а не с сайта"; return false; }
+  let res; try { res = await api("me"); } catch (e) { localReason = "не удалось обратиться к api.php"; return false; }
   const { ok, status, j, text } = res;
   // рядом нет api.php (404 или сервер отдал обычную HTML-страницу) — работаем без сервера
-  if (status === 404 || (!j && /^\s*<(!doctype|html)/i.test(text))) return false;
+  if (status === 404 || (!j && /^\s*<(!doctype|html)/i.test(text))) { localReason = "рядом со страницей нет api.php"; return false; }
   if (!j) { serverMode = true; apiProblem = status >= 500 ? "ошибка PHP " + status : "ответ не JSON — PHP не включён?"; setAcct("apierr", "Сервер"); return true; }
   if (j && j.error === "not_configured") { serverMode = true; setupAuth(); setAcct("nocfg", "Сервер"); return true; }
   if (!ok || !j || !("user" in j)) return false;
@@ -708,6 +708,7 @@ function setupAuth() {
 async function connectAccount() {
   setAcct("local");
   if (await tryServer()) return;
+  setAcct("local");
   try {
     if (!window.claude || !window.claude.use) return;
     const [user, db] = await Promise.all([claude.use("user"), claude.use("db")]);
