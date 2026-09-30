@@ -607,8 +607,7 @@ function entryHTML(e) {
     e.part ? `<span class="chip part">часть ${e.part}</span>` : "",
     x.kind === "lesson" && !x.dur ? `<span class="chip est">≈ оценка</span>` : "",
     `<span class="chip est">${x.kind === "hw" ? "выдано" : "вышел"} ${fmt(x.date)}</span>`,
-    e.dl ? `<span class="chip dl">до ${fmt(e.dl)}</span>` : "",
-    e.late ? `<span class="chip late">после дедлайна</span>` : ""
+    e.dl ? `<span class="chip dl">до ${fmt(e.dl)}</span>` : ""
   ].join("");
   const full = cost(x);
   return `<li class="entry ${x.kind} ${subj(x)}">
