@@ -89,7 +89,6 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--accent-2);outline-o
     <div class="brand">
       <div class="logo" aria-hidden="true"></div>
       <h1>ОРБИТА</h1>
-      <p class="sub">План просмотра уроков по информатике и математике. Войди, чтобы план был с тобой на любом устройстве.</p>
     </div>
 
     <div class="tabs" role="tablist">
@@ -178,7 +177,10 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--accent-2);outline-o
       const { ok, j } = await api(mode, { login, password });
       if (!ok) { msg.textContent = ERR[j && j.error] || "Не получилось, попробуй ещё раз"; return; }
       msg.className = "msg ok"; msg.textContent = mode === "register" ? "Аккаунт создан" : "Готово";
-      try { sessionStorage.removeItem("orbita-guest"); } catch (e) {}
+      try {
+        sessionStorage.removeItem("orbita-guest");
+        if (mode === "register") sessionStorage.setItem("orbita-onboard", "1"); // после регистрации спросим про КМБ
+      } catch (e) {}
       location.replace("index.html");
     } catch (err) { msg.textContent = "Нет связи с сервером"; }
     finally { $("submit").disabled = false; }
