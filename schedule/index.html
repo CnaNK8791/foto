@@ -208,6 +208,7 @@ input[type=date]{font-family:var(--f-mono)}
 .chip.part{color:var(--muted);background:rgba(255,255,255,.06)}
 .chip.est{color:var(--dim);border:1px dashed rgba(255,255,255,.12)}
 .emin{grid-column:2;font-family:var(--f-mono);font-size:11px;color:var(--accent-2);white-space:normal;font-variant-numeric:tabular-nums}
+.emin:empty{display:none}
 .emin small{color:var(--dim);font-size:9.5px;margin-left:5px;white-space:nowrap}
 .slim{display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:12px;border:1px dashed var(--line);color:var(--dim);font-size:12px;flex-wrap:wrap}
 .slim b{font-family:var(--f-mono);font-weight:600;color:var(--muted);font-size:11px}
@@ -311,9 +312,7 @@ select{font:inherit;font-size:13px;color:var(--fg);background:var(--bg2);border:
         <p class="hint">Влияют на длительность каждого пункта</p>
         <div class="fields">
           <div class="field"><span>Скорость видео</span><div class="seg" id="speed"></div></div>
-          <div class="field"><label for="hwMin">Время на одно ДЗ, мин</label><input type="number" id="hwMin" min="5" max="300" step="5"></div>
           <div class="field"><label for="planMin">Длина будущего урока, мин</label><input type="number" id="planMin" min="15" max="240" step="5"></div>
-          <div class="field"><label for="minChunk">Мин. кусок урока, мин</label><input type="number" id="minChunk" min="5" max="120" step="5"></div>
           <div class="field"><span id="hwLbl">Планировать ДЗ</span><button class="switch" id="incHW" role="switch" aria-labelledby="hwLbl"></button></div>
           <div class="field"><span id="askLbl">Предлагать новое занятие, когда отмечаю выполненное</span><button class="switch" id="askAdd" role="switch" aria-labelledby="askLbl"></button></div>
           <div class="field"><label for="startDate">Начать с</label><input type="date" id="startDate"></div>
@@ -489,78 +488,72 @@ function save() { try { localStorage.setItem(KEY, JSON.stringify({ ver: DATA_VER
 
 /* ---------- scheduler ---------- */
 function cost(x) {
-  if (x.kind === "hw") return x.dur || S.hwMin;
+  if (x.kind === "hw") return 0; // ДЗ идёт сразу после своего видео и не занимает время плана
   return Math.max(5, Math.round((x.dur || S.planMin) / S.speed));
 }
 function schedule() {
-  const start = S.start && S.start > todayISO() ? S.start : todayISO();
+  const t = todayISO();
+  const start = S.start && S.start > t ? S.start : t;
   const off = new Set(S.off);
   const act = items.filter(x => !x.done && (S.incHW || x.kind !== "hw"));
   const byId = Object.fromEntries(items.map(x => [x.id, x]));
-  const rem = {}, dl = {};
-  act.forEach(x => { rem[x.id] = cost(x); dl[x.id] = x.deadline || null; });
-  // урок наследует самый ранний дедлайн своих ДЗ
-  act.forEach(x => { if (x.kind === "hw" && x.dep && x.deadline && rem[x.dep] != null) { const c = dl[x.dep]; if (!c || x.deadline < c) dl[x.dep] = x.deadline; } });
-  // строго по дате публикации; урок раньше ДЗ того же дня
-  const cmp = (a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : a.kind !== b.kind ? (a.kind === "lesson" ? -1 : 1) : (+a.id.slice(1)) - (+b.id.slice(1));
-  const depOk = x => !x.dep || !(x.dep in rem) || rem[x.dep] <= 0 || byId[x.dep]?.done;
-  const total = Object.values(rem).reduce((a, b) => a + b, 0);
-  const days = []; let left = total, d = start, guard = 0;
-  const weekSum = S.week.reduce((a, b) => a + b, 0);
-  const doneToday = items.filter(x => x.done && x.doneDate === todayISO()).reduce((a, x) => a + cost(x), 0);
-  // план на сегодня фиксируется: отметка «готово» не подтягивает новые занятия сама
-  const t = todayISO();
-  const sig = JSON.stringify([S.week[dow(t)], S.off.includes(t), S.mathPct, S.speed, S.hwMin, S.planMin, S.minChunk, S.incHW, S.start]);
+  const num = x => +x.id.slice(1) || 0;
+  const pending = new Set(act.map(x => x.id));
+  const dl = {};
+  act.forEach(x => { dl[x.id] = x.deadline || null; });
+  act.forEach(x => { if (x.kind === "hw" && x.dep && x.deadline && pending.has(x.dep)) { const c = dl[x.dep]; if (!c || x.deadline < c) dl[x.dep] = x.deadline; } });
+  // порядок: по дате публикации, ДЗ стоит сразу после своего видео
+  const key = x => { const l = x.kind === "hw" && x.dep && byId[x.dep]; return l ? [l.date, num(l), 1, num(x)] : [x.date, num(x), x.kind === "hw" ? 1 : 0, num(x)]; };
+  const cmp = (a, b) => { const A = key(a), B = key(b); for (let i = 0; i < 4; i++) { if (A[i] < B[i]) return -1; if (A[i] > B[i]) return 1; } return 0; };
+  const ordered = { math: act.filter(x => subj(x) === "math").sort(cmp), inf: act.filter(x => subj(x) === "inf").sort(cmp) };
+  // следующее в очереди предмета; видео не перескакивают друг через друга
+  const next = (sb, d) => { const x = ordered[sb].find(x => pending.has(x.id)); if (!x) return null; if (x.date > d) return null; if (x.kind === "hw" && x.dep && pending.has(x.dep)) return null; return x; };
+  const share = { math: S.mathPct / 100, inf: 1 - S.mathPct / 100 };
+  const spent = { math: 0, inf: 0 };
+  const behind = () => { const tot = spent.math + spent.inf; const dm = share.math * tot - spent.math, di = share.inf * tot - spent.inf; return dm > di || (dm === di && share.math >= share.inf) ? ["math", "inf"] : ["inf", "math"]; };
+  const total = act.reduce((a, x) => a + cost(x), 0);
+  const sig = JSON.stringify([S.week[dow(t)], S.off.includes(t), S.mathPct, S.speed, S.planMin, S.incHW, S.start]);
   const lock = S.lock && S.lock.date === t && S.lock.sig === sig ? S.lock : null;
   let newLock = null, nextPick = null;
-  while (left > 0.5 && guard++ < 730) {
+  const doneToday = items.filter(x => x.done && x.doneDate === t).reduce((a, x) => a + cost(x), 0);
+  const weekSum = S.week.reduce((a, b) => a + b, 0);
+  const days = []; let d = start, guard = 0;
+  const place = (entries, x) => { const c = cost(x); entries.push({ item: x, min: c }); pending.delete(x.id); spent[subj(x)] += c; return c; };
+  while (pending.size && guard++ < 730) {
     const cap = off.has(d) ? 0 : S.week[dow(d)];
-    let free = d === todayISO() ? Math.max(0, cap - doneToday) : cap;
+    let free = d === t ? Math.max(0, cap - doneToday) : cap;
     const entries = [];
-    const fill = (sb, lim) => {
-      let used = 0;
-      while (lim - used > 0) {
-        const cand = act.filter(x => subj(x) === sb && rem[x.id] > 0 && x.date <= d && depOk(x)).sort(cmp);
-        if (!cand.length) break;
-        const pick = cand[0], need = rem[pick.id], take = Math.min(lim - used, need);
-        // не начинаем урок крошечным куском
-        if (take < need && take < S.minChunk) break;
-        const ex = entries.find(e => e.item === pick);
-        if (ex) ex.min += take; else entries.push({ item: pick, min: take });
-        rem[pick.id] -= take; used += take; left -= take;
-      }
-      return used;
-    };
-    const mBudget = Math.round(free * S.mathPct / 100 / 5) * 5;
-    const budget = { math: mBudget, inf: free - mBudget };
-    const first = S.mathPct >= 50 ? ["math", "inf"] : ["inf", "math"];
     if (d === t && lock) {
-      lock.items.forEach(li => {
-        const x = byId[li.id]; const m = x && !x.done ? Math.min(li.min, rem[li.id] || 0) : 0;
-        if (m > 0) { entries.push({ item: x, min: m }); rem[li.id] -= m; left -= m; free -= m; }
-      });
-      // следующее занятие, которое можно предложить добавить: предмет, который отстаёт от выбранной доли
-      const cands = sb => act.filter(x => subj(x) === sb && rem[x.id] > 0 && x.date <= d && depOk(x)).sort(cmp);
-      const usedM = entries.filter(e => subj(e.item) === "math").reduce((a, e) => a + e.min, 0);
-      const usedAll = entries.reduce((a, e) => a + e.min, 0) || 1;
-      const order = usedM / usedAll * 100 <= S.mathPct ? ["math", "inf"] : ["inf", "math"];
-      for (const sb of order) { const c = cands(sb)[0]; if (c) { nextPick = { id: c.id, min: rem[c.id], title: c.title }; break; } }
-    } else {
-      first.forEach(sb => { free -= fill(sb, budget[sb]); });
-      // остаток дня отдаём предмету, у которого есть что смотреть
-      first.forEach(sb => { free -= fill(sb, free); });
-      if (d === t) newLock = { date: t, sig, items: entries.map(e => ({ id: e.item.id, min: e.min })) };
+      lock.items.forEach(li => { const x = byId[li.id]; if (x && pending.has(x.id)) free -= place(entries, x); });
+      // что предложить добавить: следующее видео предмета, который отстаёт, вместе с его ДЗ
+      for (const sb of behind().filter(sb => share[sb] > 0).concat(behind().filter(sb => share[sb] === 0))) {
+        const x = next(sb, d);
+        if (x) { const extra = ordered[sb].filter(h => h.kind === "hw" && h.dep === x.id && pending.has(h.id)); nextPick = { ids: [x.id, ...extra.map(h => h.id)], title: x.title, min: cost(x) }; break; }
+      }
+    } else if (cap > 0) {
+      for (let step = 0; step < 500; step++) {
+        // ДЗ без времени ставим сразу, как только до него дошла очередь
+        const zero = ["math", "inf"].map(sb => next(sb, d)).find(x => x && cost(x) === 0);
+        if (zero) { place(entries, zero); continue; }
+        const hasTime = entries.some(e => e.min > 0);
+        let pick = null;
+        for (const sb of behind()) {
+          if (share[sb] === 0 && next(sb === "math" ? "inf" : "math", d)) continue;
+          const x = next(sb, d); if (!x) continue;
+          // видео целиком: берём, если влезает, если день пустой или если влезает хотя бы половина (перебор не больше 45 мин)
+          if (cost(x) <= free || (!hasTime && free > 0) || (free > 0 && free >= cost(x) / 2 && cost(x) - free <= 45)) { pick = x; break; }
+        }
+        if (!pick) break;
+        free -= place(entries, pick);
+      }
+      if (d === t) newLock = { date: t, sig, items: entries.map(e => ({ id: e.item.id })) };
     }
     days.push({ date: d, cap, off: off.has(d) || cap === 0, entries });
     if (weekSum === 0) break;
     d = addDays(d, 1);
   }
-  // номера частей
-  const parts = {};
-  days.forEach(day => day.entries.forEach(e => (parts[e.item.id] = parts[e.item.id] || []).push(e)));
-  Object.values(parts).forEach(arr => { if (arr.length > 1) arr.forEach((e, i) => { e.part = `${i+1}/${arr.length}`; }); });
   days.forEach(day => day.entries.forEach(e => { e.late = !!(dl[e.item.id] && day.date > dl[e.item.id]); e.dl = dl[e.item.id]; }));
-  return { start, days, total, stuck: left > 0.5, newLock, nextPick, locked: !!lock };
+  return { start, days, total, stuck: pending.size > 0, newLock, nextPick, locked: !!lock };
 }
 
 /* ---------- render ---------- */
@@ -612,7 +605,7 @@ function entryHTML(e) {
   return `<li class="entry ${x.kind} ${subj(x)}">
     <button class="check" data-done="${x.id}" aria-label="Отметить «${esc(x.title)}» выполненным" title="Готово">✓</button>
     <div class="etitle"><div class="t" title="${esc(x.title)}">${esc(x.title)}</div><div class="m">${chips}</div></div>
-    <div class="emin">${hm(e.min)}${e.part ? `<small>из ${hm(full)}</small>` : x.kind === "lesson" && S.speed !== 1 ? `<small>×${S.speed}</small>` : ""}</div>
+    <div class="emin">${e.min ? hm(e.min) : ""}${e.part ? `<small>из ${hm(full)}</small>` : x.kind === "lesson" && S.speed !== 1 ? `<small>×${S.speed}</small>` : ""}</div>
   </li>`;
 }
 
@@ -623,7 +616,7 @@ function doneHTML(x) {
   return `<li class="entry ${x.kind} ${subj(x)} done">
     <button class="check" data-undo="${x.id}" aria-label="Вернуть «${esc(x.title)}» в план" title="Вернуть в план">✓</button>
     <div class="etitle"><div class="t">${esc(x.title)}</div><div class="m"><span class="chip kind">${x.kind === "hw" ? "ДЗ" : "урок"}</span><span class="chip course">${esc(SHORT[x.course] || x.course)}</span></div></div>
-    <div class="emin">${hm(cost(x))}</div>
+    <div class="emin">${cost(x) ? hm(cost(x)) : ""}</div>
   </li>`;
 }
 
@@ -701,7 +694,7 @@ function renderLib() {
       <span class="chip kind c-kind" style="background:${x.course === "math" ? "rgba(61,139,255,.18)" : x.kind === "hw" ? "rgba(255,255,255,.07)" : "rgba(255,122,26,.16)"};color:${x.course === "math" ? "var(--math-2)" : "inherit"};text-align:center">${x.kind === "hw" ? "ДЗ" : "урок"}</span>
       <input type="text" id="t-${x.id}" data-k="title" value="${esc(x.title)}" aria-label="Название">
       <div class="c-date"><span class="lbl">выход</span><input type="date" id="d-${x.id}" data-k="date" value="${x.date}" aria-label="Дата выхода"></div>
-      <div class="c-dur"><span class="lbl">мин</span><input type="number" id="m-${x.id}" data-k="dur" value="${x.dur ?? ""}" placeholder="${x.kind === "hw" ? S.hwMin : S.planMin}" min="1" aria-label="Длительность, мин" title="${x.kind === "hw" ? "Минут на ДЗ" : "Длина видео, мин"}"></div>
+      <div class="c-dur"><span class="lbl">мин</span>${x.kind === "hw" ? `<span class="muted" style="font-size:12px">—</span>` : `<input type="number" id="m-${x.id}" data-k="dur" value="${x.dur ?? ""}" placeholder="${S.planMin}" min="1" aria-label="Длина видео, мин" title="Длина видео, мин">`}</div>
       <div class="c-dl"><span class="lbl">дедлайн</span>${x.kind === "hw" ? `<input type="date" id="l-${x.id}" data-k="deadline" value="${x.deadline || ""}" aria-label="Дедлайн">` : `<span class="muted" style="font-size:12px">${esc(COURSES[x.course] || "")}</span>`}</div>
       <button class="danger" data-del="${x.id}">удалить</button>
     </div>`).join("") || `<p class="muted">Здесь пока пусто.</p>`;
@@ -718,7 +711,7 @@ function renderMix() {
 function renderSettings() {
   renderMix();
   $("speed").innerHTML = [1, 1.25, 1.5, 1.75, 2].map(v => `<button type="button" data-s="${v}" aria-pressed="${S.speed === v}">${v}×</button>`).join("");
-  $("hwMin").value = S.hwMin; $("planMin").value = S.planMin; $("minChunk").value = S.minChunk;
+  $("planMin").value = S.planMin;
   $("incHW").setAttribute("aria-checked", S.incHW);
   $("askAdd").setAttribute("aria-checked", S.askAdd);
   $("startDate").value = S.start || todayISO(); $("startDate").min = todayISO();
@@ -745,14 +738,14 @@ $("view-plan").addEventListener("click", e => {
   const u = e.target.closest("[data-undo]"); if (u) { const x = items.find(i => i.id === u.dataset.undo); if (x) { x.done = false; delete x.doneDate; save(); recompute(); } return; }
   const q = e.target.closest("[data-ask]");
   if (q) {
-    if (q.dataset.ask === "yes" && S.lock && plan.nextPick) S.lock.items.push({ id: plan.nextPick.id, min: plan.nextPick.min });
+    if (q.dataset.ask === "yes" && S.lock && plan.nextPick) plan.nextPick.ids.forEach(id => S.lock.items.push({ id }));
     if (S.lock) S.lock.declined = true;
     save(); recompute(); return;
   }
   const w = e.target.closest("[data-wk]"); if (w) { const k = +w.dataset.wk; weekStart = k ? addDays(weekStart, 7 * k) : mondayOf(todayISO()); renderPlan(); }
 });
 $("speed").addEventListener("click", e => { const b = e.target.closest("[data-s]"); if (!b) return; S.speed = +b.dataset.s; save(); renderSettings(); recompute(); });
-[["hwMin", 5], ["planMin", 15], ["minChunk", 5]].forEach(([k, min]) => $(k).addEventListener("change", e => { const v = Math.max(min, +e.target.value || min); S[k] = v; e.target.value = v; save(); recompute(); }));
+[["planMin", 15]].forEach(([k, min]) => $(k).addEventListener("change", e => { const v = Math.max(min, +e.target.value || min); S[k] = v; e.target.value = v; save(); recompute(); }));
 $("mix").addEventListener("input", e => { S.mathPct = +e.target.value; renderMix(); });
 $("mix").addEventListener("change", () => { save(); recompute(); });
 $("askAdd").onclick = () => { S.askAdd = !S.askAdd; save(); renderSettings(); recompute(); };
