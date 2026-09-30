@@ -333,7 +333,6 @@ select{font:inherit;font-size:13px;color:var(--fg);background:var(--bg2);border:
         <p class="hint">Влияют на длительность каждого пункта</p>
         <div class="fields">
           <div class="field"><span>Скорость видео</span><div class="seg" id="speed"></div></div>
-          <div class="field"><label for="planMin">Длина будущего урока, мин</label><input type="number" id="planMin" min="15" max="240" step="5"></div>
           <div class="field"><span id="hwLbl">Планировать ДЗ</span><button class="switch" id="incHW" role="switch" aria-labelledby="hwLbl"></button></div>
           <div class="field"><span id="splitLbl">Делить урок на части, если не хватает времени дня (ДЗ — после последней части)</span><button class="switch" id="split" role="switch" aria-labelledby="splitLbl"></button></div>
           <div class="field"><span id="askLbl">Предлагать новое занятие, когда отмечаю выполненное</span><button class="switch" id="askAdd" role="switch" aria-labelledby="askLbl"></button></div>
@@ -619,7 +618,7 @@ async function connectAccount() {
 /* ---------- scheduler ---------- */
 function cost(x) {
   if (x.kind === "hw") return 0; // ДЗ идёт сразу после своего видео и не занимает время плана
-  return Math.max(5, Math.round((x.dur || S.planMin) / S.speed));
+  return x.dur ? Math.max(5, Math.round(x.dur / S.speed)) : 0; // у невышедшего видео длины пока нет
 }
 const progMin = x => (x.prog || []).reduce((a, p) => a + p.min, 0);
 const remaining = x => Math.max(0, cost(x) - progMin(x));
@@ -644,7 +643,10 @@ function schedule() {
   // порядок: по дате публикации, ДЗ стоит сразу после своего видео
   const key = x => { const l = x.kind === "hw" && x.dep && byId[x.dep]; return l ? [l.date, num(l), 1, num(x)] : [x.date, num(x), x.kind === "hw" ? 1 : 0, num(x)]; };
   const cmp = (a, b) => { const A = key(a), B = key(b); for (let i = 0; i < 4; i++) { if (A[i] < B[i]) return -1; if (A[i] > B[i]) return 1; } return 0; };
-  const ordered = { math: act.filter(x => subj(x) === "math").sort(cmp), inf: act.filter(x => subj(x) === "inf").sort(cmp) };
+  // видео без длины (ещё не вышло) не стоит в очереди: оно ставится в день своего выхода вместе с ДЗ
+  const noLen = x => x.kind === "lesson" && !x.dur;
+  const floating = x => noLen(x) || (x.kind === "hw" && x.dep && byId[x.dep] && noLen(byId[x.dep]) && pending.has(x.dep));
+  const ordered = { math: act.filter(x => subj(x) === "math" && !floating(x)).sort(cmp), inf: act.filter(x => subj(x) === "inf" && !floating(x)).sort(cmp) };
   // следующее в очереди предмета; видео не перескакивают друг через друга
   const next = (sb, d) => { const x = ordered[sb].find(x => pending.has(x.id)); if (!x) return null; if (x.date > d) return null; if (x.kind === "hw" && x.dep && pending.has(x.dep)) return null; return x; };
   const share = { math: S.mathPct / 100, inf: 1 - S.mathPct / 100 };
@@ -653,7 +655,7 @@ function schedule() {
   const rem = {}; act.forEach(x => { rem[x.id] = remaining(x); });
   const started = new Set(act.filter(x => progMin(x) > 0).map(x => x.id)); // начатые уроки досматриваем в первую очередь
   const total = act.reduce((a, x) => a + rem[x.id], 0);
-  const sig = JSON.stringify([S.week[dow(t)], S.off.includes(t), S.mathPct, S.speed, S.planMin, S.incHW, S.start, S.split]);
+  const sig = JSON.stringify([S.week[dow(t)], S.off.includes(t), S.mathPct, S.speed, S.incHW, S.start, S.split]);
   const lock = S.lock && S.lock.date === t && S.lock.sig === sig ? S.lock : null;
   let newLock = null, nextPick = null;
   const doneToday = minutesOn(t);
@@ -674,6 +676,7 @@ function schedule() {
     const cap = off.has(d) ? 0 : S.week[dow(d)];
     let free = d === t ? Math.max(0, cap - doneToday) : cap;
     const entries = [];
+    act.filter(x => noLen(x) && pending.has(x.id) && (x.date === d || (x.date < start && d === start))).forEach(x => place(entries, x));
     if (d === t && lock) {
       lock.items.forEach(li => {
         const x = byId[li.id]; if (!x || !pending.has(x.id)) return;
@@ -874,7 +877,7 @@ function renderLib() {
       <span class="chip kind c-kind" style="background:${subj(x) === "math" ? "rgba(61,139,255,.18)" : x.kind === "hw" ? "rgba(255,255,255,.07)" : "rgba(255,122,26,.16)"};color:${subj(x) === "math" ? "var(--math-2)" : "inherit"};text-align:center">${x.kind === "hw" ? "ДЗ" : "урок"}</span>
       <input type="text" id="t-${x.id}" data-k="title" value="${esc(x.title)}" aria-label="Название">
       <div class="c-date"><span class="lbl">выход</span><input type="date" id="d-${x.id}" data-k="date" value="${x.date}" aria-label="Дата выхода"></div>
-      <div class="c-dur"><span class="lbl">мин</span>${x.kind === "hw" ? `<span class="muted" style="font-size:12px">—</span>` : `<input type="number" id="m-${x.id}" data-k="dur" value="${x.dur ?? ""}" placeholder="${S.planMin}" min="1" aria-label="Длина видео, мин" title="Длина видео, мин">`}</div>
+      <div class="c-dur"><span class="lbl">мин</span>${x.kind === "hw" ? `<span class="muted" style="font-size:12px">—</span>` : `<input type="number" id="m-${x.id}" data-k="dur" value="${x.dur ?? ""}" placeholder="—" min="1" aria-label="Длина видео, мин" title="Длина видео, мин">`}</div>
       <div class="c-dl"><span class="lbl">дедлайн</span>${x.kind === "hw" ? `<input type="date" id="l-${x.id}" data-k="deadline" value="${x.deadline || ""}" aria-label="Дедлайн">` : `<span class="muted" style="font-size:12px">${esc(COURSES[x.course] || "")}</span>`}</div>
       <button class="danger" data-del="${x.id}">удалить</button>
     </div>`).join("") || `<p class="muted">Здесь пока пусто.</p>`;
@@ -891,7 +894,6 @@ function renderMix() {
 function renderSettings() {
   renderMix();
   $("speed").innerHTML = [1, 1.25, 1.5, 1.75, 2].map(v => `<button type="button" data-s="${v}" aria-pressed="${S.speed === v}">${v}×</button>`).join("");
-  $("planMin").value = S.planMin;
   $("incHW").setAttribute("aria-checked", S.incHW);
   $("askAdd").setAttribute("aria-checked", S.askAdd);
   $("split").setAttribute("aria-checked", S.split);
@@ -936,7 +938,6 @@ $("view-plan").addEventListener("click", e => {
   const w = e.target.closest("[data-wk]"); if (w) { const k = +w.dataset.wk; weekStart = k ? addDays(weekStart, 7 * k) : mondayOf(todayISO()); renderPlan(); }
 });
 $("speed").addEventListener("click", e => { const b = e.target.closest("[data-s]"); if (!b) return; S.speed = +b.dataset.s; save(); renderSettings(); recompute(); });
-[["planMin", 15]].forEach(([k, min]) => $(k).addEventListener("change", e => { const v = Math.max(min, +e.target.value || min); S[k] = v; e.target.value = v; save(); recompute(); }));
 $("mix").addEventListener("input", e => { S.mathPct = +e.target.value; renderMix(); });
 $("mix").addEventListener("change", () => { save(); recompute(); });
 $("split").onclick = () => { S.split = !S.split; save(); renderSettings(); recompute(); };
