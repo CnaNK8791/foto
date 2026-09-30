@@ -313,10 +313,7 @@ select{font:inherit;font-size:13px;color:var(--fg);background:var(--bg2);border:
     <div class="brand"><div class="logo" aria-hidden="true"></div><div><b>ОРБИТА</b><small>план просмотра уроков</small></div></div>
     <div class="acct" id="acct" data-state="local" title="Данные плана хранятся в вашем аккаунте claude.ai"><span class="dot" aria-hidden="true"></span><span><b class="an">Гость</b><small class="as">Вход не выполнен · только этот браузер</small></span></div>
     <button class="btn mini" id="loginBtn" type="button" hidden>Войти</button>
-    <div class="tabs" role="tablist">
-      <button role="tab" id="tab-plan" aria-selected="true" data-view="plan">Расписание</button>
-      <button role="tab" id="tab-lib" aria-selected="false" data-view="lib">Уроки и ДЗ</button>
-    </div>
+    <a class="btn mini sec" id="adminLink" href="admin.html" hidden>Админка</a>
   </header>
 
   <section class="panel authpanel" id="auth" hidden aria-label="Аккаунт">
@@ -381,23 +378,6 @@ select{font:inherit;font-size:13px;color:var(--fg);background:var(--bg2);border:
 
     <section>
       <div id="view-plan" class="timeline"></div>
-      <div id="view-lib" class="panel" hidden>
-        <div class="lib-tools">
-          <div class="seg" id="libFilter"></div>
-          <span class="muted" style="font-size:12px;margin-left:auto">Изменения сразу пересчитывают расписание</span>
-          <button class="btn sec" id="resetBtn">Сбросить данные</button>
-        </div>
-        <div class="lib-list" id="libList"></div>
-        <form class="addform" id="addForm">
-          <select id="aKind" aria-label="Тип"><option value="lesson">Урок</option><option value="hw">ДЗ</option></select>
-          <input type="text" id="aTitle" placeholder="Название" aria-label="Название" required>
-          <select id="aCourse" aria-label="Курс"></select>
-          <input type="date" id="aDate" aria-label="Дата выхода" required>
-          <input type="number" id="aDur" placeholder="мин" min="1" aria-label="Длительность, мин">
-          <input type="date" id="aDl" aria-label="Дедлайн">
-          <button class="btn" type="submit">Добавить</button>
-        </form>
-      </div>
     </section>
 </div>
 
@@ -677,26 +657,47 @@ async function tryServer() {
   if (j && j.error) { serverMode = true; apiProblem = AUTH_ERR[j.error] || j.error; setAcct("apierr", "Сервер"); return true; }
   if (!ok || !j || !("user" in j)) return false;
   serverMode = true; setupAuth();
-  if (j.user) await serverLogin(j.user.login);
-  else if (guestAllowed()) setAcct("guest");
-  else { location.replace("login.html"); return true; } // без входа — на страницу входа
+  if (j.user) { isAdmin = !!j.user.admin; $("adminLink").hidden = !isAdmin; await serverLogin(j.user.login); }
+  else { location.replace("login.html"); return true; } // без входа расписание не открывается
   return true;
+}
+let isAdmin = false;
+// каталог уроков хранится на сервере, у пользователя — только отметки и настройки
+function fromCatalog(rows, prev) {
+  const old = Object.fromEntries((prev || []).map(x => [x.id, x]));
+  return rows.map(r => {
+    const id = "i" + r.id, p = old[id] || {};
+    const x = { id, course: r.course, kind: r.kind, title: r.title || "", date: r.date, dur: r.dur == null ? null : +r.dur, released: !!+r.released, dep: r.dep ? "i" + r.dep : null, deadline: r.deadline || null, done: !!p.done };
+    if (p.done) x.doneDate = p.doneDate ?? "";
+    if (p.prog) x.prog = p.prog;
+    return x;
+  });
+}
+function personalState() {
+  const st = {};
+  items.forEach(x => { if (x.done || x.prog) st[x.id] = { done: !!x.done, doneDate: x.doneDate, prog: x.prog }; });
+  return st;
 }
 async function serverLogin(login) {
   acctName = login; setAcct("sync", login);
-  const { ok, j } = await api("load");
-  if (!ok) { setAcct("err", login); return; }
-  cloudRef = { set: async data => { const r = await api("save", { data }); if (!r.ok) throw { code: r.j && r.j.error === "not_logged_in" ? "logged_out" : "unavailable" }; } };
-  if (j && j.data && Array.isArray(j.data.items)) {
-    applyState(j.data);
-    try { localStorage.setItem(KEY, JSON.stringify({ ver: DATA_VER, S, items })); } catch (e) {}
-    renderWeek(); renderSettings(); recompute();
-    setAcct("ok", login);
-    if ((j.data.ver || 1) < DATA_VER) cloudSave();
-  } else { cloudDirty = true; cloudFlush(); } // новый аккаунт: переносим план из этого браузера в базу
+  const [cat, pl] = await Promise.all([api("catalog"), api("load")]);
+  const { ok, j } = pl;
+  if (!ok || !cat.ok) { setAcct("err", login); return; }
+  const saved = j && j.data;
+  // отметки: из сохранённого плана (новый формат state или старый items), иначе из этого браузера
+  let prev = items;
+  if (saved && saved.state) prev = Object.entries(saved.state).map(([id, v]) => ({ id, ...v }));
+  else if (saved && Array.isArray(saved.items)) prev = saved.items;
+  if (saved && saved.S) S = { ...DEFAULTS, ...saved.S };
+  items = fromCatalog(cat.j.lessons || [], prev);
+  catalogEmpty = !items.length;
+  cloudRef = { set: async data => { const r = await api("save", { data: { ver: DATA_VER, S: data.S, state: personalState() } }); if (!r.ok) throw { code: r.j && r.j.error === "not_logged_in" ? "logged_out" : "unavailable" }; } };
+  renderWeek(); renderSettings(); recompute();
+  if (saved && saved.state) setAcct("ok", login); else { cloudDirty = true; cloudFlush(); }
   let onboard = false; try { onboard = sessionStorage.getItem("orbita-onboard") === "1"; } catch (e) {}
-  if (onboard && S.kmbDone == null) showKmb();
+  if (onboard && S.kmbDone == null && items.some(x => x.course === "math")) showKmb();
 }
+let catalogEmpty = false;
 // Вопрос после регистрации: сколько заданий КМБ (летний курс математики) уже сделано
 function showKmb() {
   const grid = $("kmbGrid");
@@ -712,7 +713,7 @@ function applyKmb(n) {
   items.forEach(x => {
     if (ids.has(x.id) || (x.kind === "hw" && ids.has(x.dep))) { x.done = true; x.doneDate = y; delete x.prog; }
   });
-  S.kmbDone = n;
+  S.kmbDone = n; S.lock = null; // план на сегодня пересоберётся без пройденных уроков
   try { sessionStorage.removeItem("orbita-onboard"); } catch (e) {}
   $("kmb").hidden = true;
   save(); recompute();
@@ -767,9 +768,11 @@ async function connectAccount() {
 }
 
 /* ---------- scheduler ---------- */
+// вышло ли видео: на сервере это отмечает администратор, без сервера — по дате
+const released = x => x.released !== undefined ? !!x.released : x.date <= todayISO();
 function cost(x) {
   if (x.kind === "hw") return 0; // ДЗ идёт сразу после своего видео и не занимает время плана
-  return x.dur ? Math.max(5, Math.round(x.dur / S.speed)) : 0; // у невышедшего видео длины пока нет
+  return x.dur && released(x) ? Math.max(5, Math.round(x.dur / S.speed)) : 0; // у невышедшего видео длины пока нет
 }
 const progMin = x => (x.prog || []).reduce((a, p) => a + p.min, 0);
 const remaining = x => Math.max(0, cost(x) - progMin(x));
@@ -795,7 +798,7 @@ function schedule() {
   const key = x => { const l = x.kind === "hw" && x.dep && byId[x.dep]; return l ? [l.date, num(l), 1, num(x)] : [x.date, num(x), x.kind === "hw" ? 1 : 0, num(x)]; };
   const cmp = (a, b) => { const A = key(a), B = key(b); for (let i = 0; i < 4; i++) { if (A[i] < B[i]) return -1; if (A[i] > B[i]) return 1; } return 0; };
   // видео без длины (ещё не вышло) не стоит в очереди: оно ставится в день своего выхода вместе с ДЗ
-  const noLen = x => x.kind === "lesson" && !x.dur;
+  const noLen = x => x.kind === "lesson" && (!x.dur || !released(x));
   const floating = x => noLen(x) || (x.kind === "hw" && x.dep && byId[x.dep] && noLen(byId[x.dep]) && pending.has(x.dep));
   const ordered = { math: act.filter(x => subj(x) === "math" && !floating(x)).sort(cmp), inf: act.filter(x => subj(x) === "inf" && !floating(x)).sort(cmp) };
   // следующее в очереди предмета; видео не перескакивают друг через друга
@@ -911,7 +914,8 @@ function renderCal() {
   }
 }
 
-const dispTitle = x => x.unknown ? "Урок не определён" : x.title;
+const dispTitle = x => x.unknown || !x.title ? "Урок не определён" : x.title;
+const byIdAll = () => Object.fromEntries(items.map(x => [x.id, x]));
 function rowHTML(x, o) {
   const partChip = o.part ? `<span class="chip part">${o.part === "last" ? "последняя часть" : "часть " + o.part}</span>` : "";
   const chips = o.done
@@ -920,7 +924,7 @@ function rowHTML(x, o) {
       `<span class="chip kind">${x.kind === "hw" ? "ДЗ" : "урок"}</span>`,
       `<span class="chip course">${esc(SHORT[x.course] || x.course)}</span>`,
       partChip,
-      x.date > todayISO() ? (x.kind === "lesson" ? `<span class="chip plan">запланировано</span>` : "") : `<span class="chip est">${x.kind === "hw" ? "выдано" : "вышел"} ${fmt(x.date)}</span>`,
+      !released(x) || (x.kind === "hw" && x.dep && byIdAll()[x.dep] && !released(byIdAll()[x.dep])) ? (x.kind === "lesson" ? `<span class="chip plan">запланировано</span>` : "") : `<span class="chip est">${x.kind === "hw" ? "выдано" : "вышел"} ${fmt(x.date)}</span>`,
     ].join("");
   const T = esc(dispTitle(x));
   let btn;
@@ -928,7 +932,7 @@ function rowHTML(x, o) {
   else if (o.done) btn = `<button class="check" data-undo="${x.id}" aria-label="Вернуть «${T}» в план" title="Вернуть в план">✓</button>`;
   else if (o.part && !o.final) btn = `<button class="check" data-prog="${x.id}" data-min="${o.min}" aria-label="Отметить часть «${T}» просмотренной" title="Часть просмотрена">✓</button>`;
   else btn = `<button class="check" data-done="${x.id}" aria-label="Отметить «${T}» выполненным" title="Готово">✓</button>`;
-  const min = x.kind === "lesson" && !x.dur ? (x.date > todayISO() ? "" : "длина не определена")
+  const min = x.kind === "lesson" && (!x.dur || !released(x)) ? (!released(x) ? "" : "длина не определена")
     : o.min ? hm(o.min) + (o.part && !o.done ? `<small>из ${hm(cost(x))}</small>` : !o.done && x.kind === "lesson" && S.speed !== 1 ? `<small>×${S.speed}</small>` : "") : "";
   return `${btn}<div class="etitle"><div class="t" title="${T}">${T}</div><div class="m">${chips}</div></div><div class="emin">${min}</div>`;
 }
@@ -942,7 +946,7 @@ function listHTML(rows, done, removable) {
     const host = r.item.kind === "lesson" && (done ? r.prog == null : !r.part || r.final);
     const subs = host ? rows.map((h, hi) => [h, hi]).filter(([h, hi]) => !used.has(hi) && h.item.kind === "hw" && h.item.dep === r.item.id) : [];
     subs.forEach(([, hi]) => used.add(hi));
-    out.push(`<li class="entry ${r.item.kind} ${subj(r.item)}${done ? " done" : ""}${r.item.date > todayISO() ? " planned" : ""}${subs.length ? " grp" : ""}">${rowHTML(r.item, { ...r, done })}${subs.map(([h]) => `<div class="sub">${rowHTML(h.item, { ...h, done })}</div>`).join("")}${removable && !done ? `<button class="rm" data-rm="${r.item.id}" title="Перенести на следующие дни">убрать из сегодняшнего дня</button>` : ""}</li>`);
+    out.push(`<li class="entry ${r.item.kind} ${subj(r.item)}${done ? " done" : ""}${r.item.kind === "lesson" && !released(r.item) ? " planned" : ""}${subs.length ? " grp" : ""}">${rowHTML(r.item, { ...r, done })}${subs.map(([h]) => `<div class="sub">${rowHTML(h.item, { ...h, done })}</div>`).join("")}${removable && !done ? `<button class="rm" data-rm="${r.item.id}" title="Перенести на следующие дни">убрать из сегодняшнего дня</button>` : ""}</li>`);
   });
   return out.join("");
 }
@@ -982,6 +986,7 @@ function renderPlan() {
       body += `<div class="askbar"><span>Добавить ещё занятие на сегодня? Следующее: «${esc(plan.nextPick.title.length > 48 ? plan.nextPick.title.slice(0, 46) + "…" : plan.nextPick.title)}»${plan.nextPick.min ? ", " + hm(plan.nextPick.min) : ""}.</span><div class="askbtns"><button class="btn mini" data-ask="yes">Добавить</button><button class="ghost" data-ask="no">Нет</button></div></div>`;
     if (entries.length) body += `<ul class="entries">${listHTML(entries, false, date === t && !!S.lock && S.lock.date === t)}</ul>`;
     if (done.length) body += `${entries.length ? `<div class="donesep">просмотрено</div>` : ""}<ul class="entries" style="margin-top:${entries.length ? 0 : 8}px">${listHTML(done, true)}</ul>`;
+    if (!body && catalogEmpty && !past) body = `<div class="empty">Каталог уроков пуст${isAdmin ? " — добавь уроки в админке" : ""}</div>`;
     if (!body) body = `<div class="empty">${past ? "—" : isOff ? "выходной" : date < plan.start ? "до начала плана" : date === t && S.lock && S.lock.date === t ? "на сегодня занятий нет" : plan.total ? "свободно: новые уроки ещё не вышли" : "всё сделано"}</div>`;
     cols.push(`<article class="day ${date === t ? "is-today" : ""} ${past ? "past" : ""} ${isOff && !past ? "offday" : ""}">
       <div class="colhead">
@@ -1018,30 +1023,13 @@ function renderStats() {
   $("sLateBox").classList.toggle("warn", late.size > 0);
 }
 
-function renderLib() {
-  const f = $("libFilter");
-  f.innerHTML = [["all","Все"],["lesson","Уроки"],["hw","ДЗ"],["done","Готово"]].map(([k, l]) => `<button type="button" data-f="${k}" aria-pressed="${libFilter === k}">${l}</button>`).join("");
-  const list = items.filter(x => libFilter === "all" || (libFilter === "done" ? x.done : x.kind === libFilter && !x.done))
-    .slice().sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : a.kind === "lesson" ? -1 : 1);
-  $("libList").innerHTML = list.map(x => `<div class="row ${x.done ? "is-done" : ""}" data-id="${x.id}">
-      <button class="check ${x.done ? "on" : ""}" data-toggle="${x.id}" aria-label="Готово" aria-pressed="${x.done}">✓</button>
-      <span class="chip kind c-kind" style="background:${subj(x) === "math" ? "rgba(61,139,255,.18)" : x.kind === "hw" ? "rgba(255,255,255,.07)" : "rgba(255,122,26,.16)"};color:${subj(x) === "math" ? "var(--math-2)" : "inherit"};text-align:center">${x.kind === "hw" ? "ДЗ" : "урок"}</span>
-      <input type="text" id="t-${x.id}" data-k="title" value="${esc(x.title)}" aria-label="Название">
-      <div class="c-date"><span class="lbl">выход</span><input type="date" id="d-${x.id}" data-k="date" value="${x.date}" aria-label="Дата выхода"></div>
-      <div class="c-dur"><span class="lbl">мин</span>${x.kind === "hw" ? `<span class="muted" style="font-size:12px">—</span>` : `<input type="number" id="m-${x.id}" data-k="dur" value="${x.dur ?? ""}" placeholder="—" min="1" aria-label="Длина видео, мин" title="Длина видео, мин">`}</div>
-      <div class="c-dl"><span class="lbl">дедлайн</span>${x.kind === "hw" ? `<input type="date" id="l-${x.id}" data-k="deadline" value="${x.deadline || ""}" aria-label="Дедлайн">` : `<span class="muted" style="font-size:12px">${esc(COURSES[x.course] || "")}</span>`}</div>
-      <button class="danger" data-del="${x.id}">удалить</button>
-    </div>`).join("") || `<p class="muted">Здесь пока пусто.</p>`;
-  $("aCourse").innerHTML = Object.entries(COURSES).map(([k, v]) => `<option value="${k}">${v}</option>`).join("");
-  if (!$("aDate").value) $("aDate").value = todayISO();
-}
-
 function renderMix() {
   const m = S.mathPct, wk = S.week.reduce((a, b) => a + b, 0);
   $("mix").value = m; $("mix").style.setProperty("--p", m + "%");
   $("mixM").textContent = m + "%"; $("mixI").textContent = (100 - m) + "%";
   $("mixMh").textContent = hm(wk * m / 100) + " в неделю"; $("mixIh").textContent = hm(wk * (100 - m) / 100) + " в неделю";
 }
+
 function renderSettings() {
   renderMix();
   $("speed").innerHTML = [1, 1.25, 1.5, 1.75, 2].map(v => `<button type="button" data-s="${v}" aria-pressed="${S.speed === v}">${v}×</button>`).join("");
@@ -1055,7 +1043,6 @@ function recompute() {
   plan = schedule();
   if (plan.newLock) { S.lock = plan.newLock; save(); }
   renderStats(); renderPlan(); renderCal();
-  if (view === "lib") renderLib();
 }
 
 /* ---------- events ---------- */
@@ -1095,54 +1082,11 @@ $("split").onclick = () => { S.split = !S.split; save(); renderSettings(); recom
 $("askAdd").onclick = () => { S.askAdd = !S.askAdd; save(); renderSettings(); recompute(); };
 $("incHW").onclick = () => { S.incHW = !S.incHW; save(); renderSettings(); recompute(); };
 $("startDate").addEventListener("change", e => { S.start = e.target.value; save(); recompute(); });
-document.querySelector(".tabs").addEventListener("click", e => {
-  const b = e.target.closest("[data-view]"); if (!b) return;
-  view = b.dataset.view;
-  document.querySelectorAll(".tabs button").forEach(x => x.setAttribute("aria-selected", x === b));
-  $("view-plan").hidden = view !== "plan"; $("view-lib").hidden = view !== "lib";
-  if (view === "lib") renderLib();
-});
 ["Cal", "Par"].forEach(k => $("tg" + k).addEventListener("click", e => {
   const p = $("dr-" + k.toLowerCase()), open = p.hidden;
   p.hidden = !open; e.currentTarget.setAttribute("aria-expanded", open);
 }));
 $("kmb").addEventListener("click", e => { const b = e.target.closest("[data-kmb]"); if (b) applyKmb(+b.dataset.kmb); });
-$("libFilter").addEventListener("click", e => { const b = e.target.closest("[data-f]"); if (b) { libFilter = b.dataset.f; renderLib(); } });
-$("libList").addEventListener("change", e => {
-  const row = e.target.closest(".row"); const k = e.target.dataset.k; if (!row || !k) return;
-  const x = items.find(i => i.id === row.dataset.id); if (!x) return;
-  let v = e.target.value;
-  if (k === "dur") v = v ? Math.max(1, Math.round(+v)) : null;
-  if (k === "deadline") { v = v || null; x.individual = !v; }
-  if (k === "date" && !v) return;
-  if (k === "title") x.unknown = false;
-  x[k] = v; save(); recompute();
-});
-let armed = null;
-$("libList").addEventListener("click", e => {
-  const t = e.target.closest("[data-toggle]");
-  if (t) { const x = items.find(i => i.id === t.dataset.toggle); x.done = !x.done; if (x.done) x.doneDate = todayISO(); else delete x.doneDate; save(); recompute(); renderLib(); return; }
-  const d = e.target.closest("[data-del]");
-  if (d) {
-    if (armed === d.dataset.del) { items = items.filter(i => i.id !== armed); items.forEach(i => { if (i.dep === armed) i.dep = null; }); armed = null; save(); recompute(); renderLib(); }
-    else { armed = d.dataset.del; document.querySelectorAll(".danger.arm").forEach(b => { b.classList.remove("arm"); b.textContent = "удалить"; }); d.classList.add("arm"); d.textContent = "точно удалить?"; }
-  }
-});
-let resetArmed = false;
-$("resetBtn").onclick = e => {
-  if (!resetArmed) { resetArmed = true; e.target.classList.add("arm"); e.target.textContent = "Нажми ещё раз для сброса"; setTimeout(() => { resetArmed = false; e.target.classList.remove("arm"); e.target.textContent = "Сбросить данные"; }, 4000); return; }
-  resetArmed = false; S = { ...DEFAULTS, off: [] }; items = seed(); save(); renderWeek(); renderSettings(); recompute(); renderLib();
-  e.target.classList.remove("arm"); e.target.textContent = "Данные сброшены";
-};
-$("addForm").addEventListener("submit", e => {
-  e.preventDefault();
-  const kind = $("aKind").value, title = $("aTitle").value.trim(), date = $("aDate").value;
-  if (!title || !date) return;
-  const n = +$("aDur").value;
-  items.push({ id: "i" + (++uid), course: $("aCourse").value, kind, title, date, dur: n > 0 ? Math.round(n) : null, deadline: kind === "hw" ? ($("aDl").value || null) : null, dep: null, done: false, individual: kind === "hw" && !$("aDl").value });
-  $("aTitle").value = ""; $("aDur").value = ""; $("aDl").value = "";
-  save(); recompute(); renderLib();
-});
 
 /* ---------- neural backdrop ---------- */
 function net() {

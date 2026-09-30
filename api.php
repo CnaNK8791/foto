@@ -79,6 +79,64 @@ function requireUser(): int
     return (int)$uid;
 }
 
+function requireAdmin(): int
+{
+    $uid = requireUser();
+    $st = db()->prepare('SELECT is_admin FROM orbita_users WHERE id = ?');
+    $st->execute([$uid]);
+    $u = $st->fetch();
+    if (!$u || !(int)$u['is_admin']) {
+        out(['error' => 'not_admin'], 403);
+    }
+    return $uid;
+}
+
+const COURSES = ['ege', 'p26', 'math', 'math2'];
+
+// проверка и нормализация урока из админки
+function cleanLesson(array $in): array
+{
+    $course = (string)($in['course'] ?? '');
+    if (!in_array($course, COURSES, true)) {
+        out(['error' => 'bad_course'], 422);
+    }
+    $kind = ($in['kind'] ?? '') === 'hw' ? 'hw' : 'lesson';
+    $title = trim((string)($in['title'] ?? ''));
+    if (mb_strlen($title) > 500) {
+        out(['error' => 'bad_title'], 422);
+    }
+    $date = (string)($in['date'] ?? '');
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+        out(['error' => 'bad_date'], 422);
+    }
+    $dur = $in['dur'] ?? null;
+    $dur = ($dur === null || $dur === '') ? null : (int)$dur;
+    if ($dur !== null && ($dur < 1 || $dur > 1440)) {
+        out(['error' => 'bad_dur'], 422);
+    }
+    $deadline = $in['deadline'] ?? null;
+    if ($deadline === '' || $kind !== 'hw') {
+        $deadline = null;
+    }
+    if ($deadline !== null && !preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)$deadline)) {
+        out(['error' => 'bad_date'], 422);
+    }
+    $dep = $in['dep'] ?? null;
+    $dep = ($kind === 'hw' && $dep !== null && $dep !== '') ? (int)$dep : null;
+    if ($dep !== null) {
+        $st = db()->prepare("SELECT id FROM orbita_lessons WHERE id = ? AND kind = 'lesson'");
+        $st->execute([$dep]);
+        if (!$st->fetch()) {
+            out(['error' => 'bad_dep'], 422);
+        }
+    }
+    return [
+        'course' => $course, 'kind' => $kind, 'title' => $title, 'date' => $date,
+        'dur' => $kind === 'hw' ? null : $dur, 'released' => !empty($in['released']) ? 1 : 0,
+        'dep' => $dep, 'deadline' => $deadline,
+    ];
+}
+
 function cleanLogin($login): string
 {
     $login = trim((string)$login);
@@ -105,7 +163,7 @@ try {
             $r = ['php' => PHP_VERSION, 'pdo_mysql' => extension_loaded('pdo_mysql')];
             db();
             $r['connect'] = 'ok';
-            $need = ['orbita_users' => ['id', 'login', 'pass_hash', 'created_at'], 'orbita_plans' => ['user_id', 'data', 'updated_at']];
+            $need = ['orbita_users' => ['id', 'login', 'pass_hash', 'is_admin'], 'orbita_plans' => ['user_id', 'data', 'updated_at'], 'orbita_lessons' => ['id', 'course', 'kind', 'title', 'date', 'dur', 'released', 'dep', 'deadline']];
             foreach ($need as $table => $cols) {
                 try {
                     $st = db()->query("SELECT * FROM `$table` LIMIT 0");
@@ -127,13 +185,50 @@ try {
             if (!$uid) {
                 out(['user' => null]);
             }
-            $st = db()->prepare('SELECT login FROM orbita_users WHERE id = ?');
+            $st = db()->prepare('SELECT login, is_admin FROM orbita_users WHERE id = ?');
             $st->execute([$uid]);
             $u = $st->fetch();
             if (!$u) {
                 unset($_SESSION['uid']);
+                out(['user' => null]);
             }
-            out(['user' => $u ?: null]);
+            out(['user' => ['login' => $u['login'], 'admin' => (bool)(int)$u['is_admin']]]);
+
+        case 'catalog':
+            requireUser();
+            $rows = db()->query('SELECT id, course, kind, title, date, dur, released, dep, deadline FROM orbita_lessons ORDER BY date, id')->fetchAll();
+            out(['lessons' => $rows]);
+
+        case 'admin_save':
+            requirePost($isPost);
+            requireAdmin();
+            $l = cleanLesson(is_array($in['lesson'] ?? null) ? $in['lesson'] : []);
+            $id = (int)($in['lesson']['id'] ?? 0);
+            if ($id > 0) {
+                if ($l['dep'] === $id) {
+                    out(['error' => 'bad_dep'], 422);
+                }
+                $st = db()->prepare('UPDATE orbita_lessons SET course = ?, kind = ?, title = ?, date = ?, dur = ?, released = ?, dep = ?, deadline = ? WHERE id = ?');
+                $st->execute([$l['course'], $l['kind'], $l['title'], $l['date'], $l['dur'], $l['released'], $l['dep'], $l['deadline'], $id]);
+                if ($l['kind'] !== 'lesson') {
+                    db()->prepare('UPDATE orbita_lessons SET dep = NULL WHERE dep = ?')->execute([$id]);
+                }
+            } else {
+                $st = db()->prepare('INSERT INTO orbita_lessons (course, kind, title, date, dur, released, dep, deadline) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+                $st->execute([$l['course'], $l['kind'], $l['title'], $l['date'], $l['dur'], $l['released'], $l['dep'], $l['deadline']]);
+                $id = (int)db()->lastInsertId();
+            }
+            $st = db()->prepare('SELECT id, course, kind, title, date, dur, released, dep, deadline FROM orbita_lessons WHERE id = ?');
+            $st->execute([$id]);
+            out(['lesson' => $st->fetch()]);
+
+        case 'admin_delete':
+            requirePost($isPost);
+            requireAdmin();
+            $id = (int)($in['id'] ?? 0);
+            db()->prepare('UPDATE orbita_lessons SET dep = NULL WHERE dep = ?')->execute([$id]);
+            db()->prepare('DELETE FROM orbita_lessons WHERE id = ?')->execute([$id]);
+            out(['ok' => true]);
 
         case 'register':
             requirePost($isPost);
@@ -148,13 +243,13 @@ try {
             $st->execute([$login, password_hash($pass, PASSWORD_DEFAULT)]);
             session_regenerate_id(true);
             $_SESSION['uid'] = (int)db()->lastInsertId();
-            out(['user' => ['login' => $login]]);
+            out(['user' => ['login' => $login, 'admin' => false]]);
 
         case 'login':
             requirePost($isPost);
             $login = trim((string)($in['login'] ?? ''));
             $pass = (string)($in['password'] ?? '');
-            $st = db()->prepare('SELECT id, login, pass_hash FROM orbita_users WHERE login = ?');
+            $st = db()->prepare('SELECT id, login, pass_hash, is_admin FROM orbita_users WHERE login = ?');
             $st->execute([$login]);
             $u = $st->fetch();
             if (!$u || !password_verify($pass, $u['pass_hash'])) {
@@ -163,7 +258,7 @@ try {
             }
             session_regenerate_id(true);
             $_SESSION['uid'] = (int)$u['id'];
-            out(['user' => ['login' => $u['login']]]);
+            out(['user' => ['login' => $u['login'], 'admin' => (bool)(int)$u['is_admin']]]);
 
         case 'logout':
             requirePost($isPost);
@@ -182,7 +277,7 @@ try {
             requirePost($isPost);
             $uid = requireUser();
             $data = $in['data'] ?? null;
-            if (!is_array($data) || !isset($data['items']) || !is_array($data['items'])) {
+            if (!is_array($data) || !(isset($data['state']) || isset($data['items']))) {
                 out(['error' => 'bad_data'], 422);
             }
             $json = json_encode($data, JSON_UNESCAPED_UNICODE);

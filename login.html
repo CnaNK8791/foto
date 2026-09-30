@@ -116,8 +116,6 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--accent-2);outline-o
       <p class="msg" id="msg" role="alert"></p>
     </form>
 
-    <a class="guest" id="guest" href="index.html"><span>Продолжить без аккаунта</span> →</a>
-    <p class="note">Без аккаунта план хранится только в этом браузере.</p>
   </div>
 </main>
 
@@ -167,7 +165,6 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--accent-2);outline-o
     $("eye").setAttribute("aria-label", show ? "Скрыть пароль" : "Показать пароль");
   };
 
-  $("guest").onclick = () => { try { sessionStorage.setItem("orbita-guest", "1"); } catch (e) {} };
 
   $("form").addEventListener("submit", async e => {
     e.preventDefault();
