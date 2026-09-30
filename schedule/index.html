@@ -613,7 +613,7 @@ function schedule() {
       // что предложить добавить: следующее видео предмета, который отстаёт, вместе с его ДЗ
       for (const sb of behind().filter(sb => share[sb] > 0).concat(behind().filter(sb => share[sb] === 0))) {
         const x = next(sb, d);
-        if (x) { const extra = ordered[sb].filter(h => h.kind === "hw" && h.dep === x.id && pending.has(h.id)); nextPick = { ids: [x.id, ...extra.map(h => h.id)], title: x.title, min: cost(x) }; break; }
+        if (x) { const extra = ordered[sb].filter(h => h.kind === "hw" && h.dep === x.id && pending.has(h.id)); nextPick = { ids: [x.id, ...extra.map(h => h.id)], title: dispTitle(x), min: x.dur ? cost(x) : 0 }; break; }
       }
     } else if (cap > 0) {
       for (let step = 0; step < 500; step++) {
@@ -677,19 +677,20 @@ function renderCal() {
   }
 }
 
+const dispTitle = x => x.unknown ? "Урок не определён" : x.title;
 function rowHTML(x, o) {
   const chips = o.done
     ? `<span class="chip kind">${x.kind === "hw" ? "ДЗ" : "урок"}</span><span class="chip course">${esc(SHORT[x.course] || x.course)}</span>`
     : [
       `<span class="chip kind">${x.kind === "hw" ? "ДЗ" : "урок"}</span>`,
       `<span class="chip course">${esc(SHORT[x.course] || x.course)}</span>`,
-      `<span class="chip est">${x.kind === "hw" ? "выдано" : "вышел"} ${fmt(x.date)}</span>`,
+      `<span class="chip est">${x.date > todayISO() ? "будет" : x.kind === "hw" ? "выдано" : "вышел"} ${fmt(x.date)}</span>`,
     ].join("");
   const btn = o.done
     ? `<button class="check" data-undo="${x.id}" aria-label="Вернуть «${esc(x.title)}» в план" title="Вернуть в план">✓</button>`
     : `<button class="check" data-done="${x.id}" aria-label="Отметить «${esc(x.title)}» выполненным" title="Готово">✓</button>`;
-  const min = o.min ? hm(o.min) + (!o.done && x.kind === "lesson" && S.speed !== 1 ? `<small>×${S.speed}</small>` : "") : "";
-  return `${btn}<div class="etitle"><div class="t" title="${esc(x.title)}">${esc(x.title)}</div><div class="m">${chips}</div></div><div class="emin">${min}</div>`;
+  const min = x.kind === "lesson" && !x.dur ? "длина не определена" : o.min ? hm(o.min) + (!o.done && x.kind === "lesson" && S.speed !== 1 ? `<small>×${S.speed}</small>` : "") : "";
+  return `${btn}<div class="etitle"><div class="t" title="${esc(dispTitle(x))}">${esc(dispTitle(x))}</div><div class="m">${chips}</div></div><div class="emin">${min}</div>`;
 }
 // видео и его ДЗ в одной карточке
 function listHTML(rows, done) {
@@ -733,7 +734,7 @@ function renderPlan() {
     const bar = !past && !isOff ? `<div class="row2"><div class="load" title="Загрузка дня"><span style="width:${Math.min(100, (used + (date === t ? doneMin : 0)) / cap * 100)}%"></span></div><span class="loadtxt">${hmShort(used + (date === t ? doneMin : 0))} / ${hmShort(cap)}</span></div>` : "";
     let body = "";
     if (date === t && S.askAdd && plan.locked && S.lock && !S.lock.declined && doneMin > 0 && plan.nextPick)
-      body += `<div class="askbar"><span>Добавить ещё занятие на сегодня? Следующее: «${esc(plan.nextPick.title.length > 48 ? plan.nextPick.title.slice(0, 46) + "…" : plan.nextPick.title)}», ${hm(plan.nextPick.min)}.</span><div class="askbtns"><button class="btn mini" data-ask="yes">Добавить</button><button class="ghost" data-ask="no">Нет</button></div></div>`;
+      body += `<div class="askbar"><span>Добавить ещё занятие на сегодня? Следующее: «${esc(plan.nextPick.title.length > 48 ? plan.nextPick.title.slice(0, 46) + "…" : plan.nextPick.title)}»${plan.nextPick.min ? ", " + hm(plan.nextPick.min) : ""}.</span><div class="askbtns"><button class="btn mini" data-ask="yes">Добавить</button><button class="ghost" data-ask="no">Нет</button></div></div>`;
     if (entries.length) body += `<ul class="entries">${listHTML(entries, false)}</ul>`;
     if (done.length) body += `${entries.length ? `<div class="donesep">просмотрено</div>` : ""}<ul class="entries" style="margin-top:${entries.length ? 0 : 8}px">${listHTML(done.map(x => ({ item: x, min: cost(x) })), true)}</ul>`;
     if (!body) body = `<div class="empty">${past ? "—" : isOff ? "выходной" : date < plan.start ? "до начала плана" : plan.total ? "свободно: новые уроки ещё не вышли" : "всё сделано"}</div>`;
