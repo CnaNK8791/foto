@@ -291,7 +291,6 @@ select{font:inherit;font-size:13px;color:var(--fg);background:var(--bg2);border:
   <section class="hero">
     <div>
       <div class="eyebrow" id="todayLabel">сегодня</div>
-      <h1>Успеть всё <span class="glow" id="finishHead">до —</span></h1>
     </div>
     <div class="stats">
       <div class="stat hot"><div class="k">Сегодня</div><div class="v" id="sToday">—</div></div>
@@ -815,7 +814,6 @@ function renderStats() {
   $("todayLabel").textContent = "сегодня · " + new Date().toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" });
   const withWork = plan.days.filter(d => d.entries.length);
   const last = withWork[withWork.length - 1];
-  $("finishHead").textContent = last ? "до " + parse(last.date).toLocaleDateString("ru-RU", { day: "numeric", month: "long" }) : "уже сделано";
   const td = plan.days.find(d => d.date === t);
   $("sToday").textContent = td ? (td.off ? "выходной" : hm(td.entries.reduce((a, e) => a + e.min, 0))) : "—";
   $("sLeft").textContent = hm(plan.total);
