@@ -2,5 +2,5 @@ node_modules/
 npm-debug.log*
 .DS_Store
 *.log
-schedule/config.php
+config.php
 orbita-schedule.zip

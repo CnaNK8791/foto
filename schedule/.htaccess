@@ -1,4 +1,0 @@
-# Не отдавать служебные файлы по ссылке
-<FilesMatch "^(config\.php|config\.example\.php|schema\.sql|README\.md)$">
-  Require all denied
-</FilesMatch>

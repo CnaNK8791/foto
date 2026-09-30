@@ -1,0 +1,4 @@
+# Не отдавать служебные файлы по ссылке
+<FilesMatch "^(config\.php|config\.example\.php|schema\.sql|SETUP\.md|README\.md|package(-lock)?\.json|server\.js|flightParser\.js|Dockerfile)$">
+  Require all denied
+</FilesMatch>

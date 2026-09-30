@@ -307,19 +307,8 @@ select{font:inherit;font-size:13px;color:var(--fg);background:var(--bg2);border:
     </div>
   </header>
 
-  <section class="panel authpanel" id="auth" hidden aria-label="Вход в аккаунт">
-    <form id="authForm" autocomplete="on">
-      <h2>Вход в аккаунт</h2>
-      <p class="hint">План сохраняется в базе данных, и его видно с любого устройства.</p>
-      <div class="authrow">
-        <input type="text" id="aLogin" name="username" autocomplete="username" placeholder="Логин" aria-label="Логин" required>
-        <input type="password" id="aPass" name="password" autocomplete="current-password" placeholder="Пароль, от 6 символов" aria-label="Пароль" required>
-        <button class="btn" type="submit" data-mode="login">Войти</button>
-        <button class="btn sec" type="submit" data-mode="register">Создать аккаунт</button>
-      </div>
-      <p class="autherr" id="authErr" role="alert"></p>
-    </form>
-    <div id="authIn" hidden>
+  <section class="panel authpanel" id="auth" hidden aria-label="Аккаунт">
+    <div id="authIn">
       <p class="authme">Вы вошли как <b id="authName"></b>. План сохраняется в базе данных.</p>
       <button class="btn sec" id="logoutBtn" type="button">Выйти</button>
     </div>
@@ -626,7 +615,7 @@ async function cloudFlush() {
     setAcct("ok", acctName);
   } catch (e) {
     if (e && e.code === "invalid_argument") { cloudRef = null; setAcct("ro", acctName); }
-    else if (e && e.code === "logged_out") { cloudRef = null; acctName = ""; setAcct("guest"); showAuth(true); }
+    else if (e && e.code === "logged_out") { location.replace("login.html"); }
     else if (e && e.code === "unavailable") { cloudDirty = true; setTimeout(cloudFlush, 1500 + Math.random() * 1000); }
     else setAcct("err", acctName);
   } finally { cloudBusy = false; if (cloudDirty) cloudSave(); }
@@ -667,11 +656,13 @@ async function tryServer() {
   if (j && j.error) { serverMode = true; apiProblem = AUTH_ERR[j.error] || j.error; setAcct("apierr", "Сервер"); return true; }
   if (!ok || !j || !("user" in j)) return false;
   serverMode = true; setupAuth();
-  if (j.user) await serverLogin(j.user.login); else { setAcct("guest"); showAuth(true); }
+  if (j.user) await serverLogin(j.user.login);
+  else if (guestAllowed()) setAcct("guest");
+  else { location.replace("login.html"); return true; } // без входа — на страницу входа
   return true;
 }
 async function serverLogin(login) {
-  acctName = login; setAcct("sync", login); showAuth();
+  acctName = login; setAcct("sync", login);
   const { ok, j } = await api("load");
   if (!ok) { setAcct("err", login); return; }
   cloudRef = { set: async data => { const r = await api("save", { data }); if (!r.ok) throw { code: r.j && r.j.error === "not_logged_in" ? "logged_out" : "unavailable" }; } };
@@ -683,38 +674,25 @@ async function serverLogin(login) {
     if ((j.data.ver || 1) < DATA_VER) cloudSave();
   } else { cloudDirty = true; cloudFlush(); } // новый аккаунт: переносим план из этого браузера в базу
 }
+// «Продолжить без аккаунта» на странице входа ставит этот флаг до конца сеанса браузера
+function guestAllowed() { try { return sessionStorage.getItem("orbita-guest") === "1"; } catch (e) { return false; } }
 function showAuth(open) {
   const p = $("auth"); if (!p) return;
-  if (open !== undefined) p.hidden = !open;
-  $("authForm").hidden = !!acctName && !!cloudRef;
-  $("authIn").hidden = !(acctName && cloudRef);
+  p.hidden = !open;
   $("authName").textContent = acctName;
 }
 function setupAuth() {
   const chip = $("acct");
   chip.setAttribute("role", "button"); chip.tabIndex = 0; chip.classList.add("clickable");
-  chip.title = "Вход в аккаунт";
-  $("loginBtn").addEventListener("click", () => { showAuth(true); if (!$("authForm").hidden) $("aLogin").focus(); });
-  const toggle = () => { showAuth($("auth").hidden); if (!$("auth").hidden && !$("authForm").hidden) $("aLogin").focus(); };
+  chip.title = "Аккаунт";
+  $("loginBtn").addEventListener("click", () => { location.href = "login.html"; });
+  const toggle = () => { if (acctName && cloudRef) showAuth($("auth").hidden); else location.href = "login.html"; };
   chip.addEventListener("click", toggle);
   chip.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } });
-  $("authForm").addEventListener("submit", async e => {
-    e.preventDefault();
-    const mode = e.submitter && e.submitter.dataset.mode === "register" ? "register" : "login";
-    $("authErr").textContent = "";
-    const btns = $("authForm").querySelectorAll("button"); btns.forEach(b => b.disabled = true);
-    try {
-      const { ok, j } = await api(mode, { login: $("aLogin").value, password: $("aPass").value });
-      if (!ok) { $("authErr").textContent = AUTH_ERR[j && j.error] || "Не получилось, попробуйте ещё раз"; return; }
-      $("aPass").value = "";
-      await serverLogin(j.user.login);
-      showAuth(false);
-    } catch (err) { $("authErr").textContent = "Нет связи с сервером"; }
-    finally { btns.forEach(b => b.disabled = false); }
-  });
   $("logoutBtn").addEventListener("click", async () => {
     try { await api("logout", {}); } catch (e) {}
-    cloudRef = null; acctName = ""; setAcct("guest"); showAuth(true);
+    try { sessionStorage.removeItem("orbita-guest"); } catch (e) {}
+    location.replace("login.html");
   });
 }
 
