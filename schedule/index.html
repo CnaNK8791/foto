@@ -618,8 +618,7 @@ async function connectAccount() {
 /* ---------- scheduler ---------- */
 function cost(x) {
   if (x.kind === "hw") return 0; // ДЗ идёт сразу после своего видео и не занимает время плана
-  // у невышедшего видео длины пока нет; вышедшее без указанной длины считаем за 90 мин
-  return Math.max(x.dur || x.date > todayISO() ? 0 : 5, Math.round((x.dur || (x.date > todayISO() ? 0 : 90)) / S.speed));
+  return x.dur ? Math.max(5, Math.round(x.dur / S.speed)) : 0; // у невышедшего видео длины пока нет
 }
 const progMin = x => (x.prog || []).reduce((a, p) => a + p.min, 0);
 const remaining = x => Math.max(0, cost(x) - progMin(x));
@@ -645,7 +644,7 @@ function schedule() {
   const key = x => { const l = x.kind === "hw" && x.dep && byId[x.dep]; return l ? [l.date, num(l), 1, num(x)] : [x.date, num(x), x.kind === "hw" ? 1 : 0, num(x)]; };
   const cmp = (a, b) => { const A = key(a), B = key(b); for (let i = 0; i < 4; i++) { if (A[i] < B[i]) return -1; if (A[i] > B[i]) return 1; } return 0; };
   // видео без длины (ещё не вышло) не стоит в очереди: оно ставится в день своего выхода вместе с ДЗ
-  const noLen = x => x.kind === "lesson" && !x.dur && x.date > t;
+  const noLen = x => x.kind === "lesson" && !x.dur;
   const floating = x => noLen(x) || (x.kind === "hw" && x.dep && byId[x.dep] && noLen(byId[x.dep]) && pending.has(x.dep));
   const ordered = { math: act.filter(x => subj(x) === "math" && !floating(x)).sort(cmp), inf: act.filter(x => subj(x) === "inf" && !floating(x)).sort(cmp) };
   // следующее в очереди предмета; видео не перескакивают друг через друга
@@ -1018,6 +1017,7 @@ function net() {
 load(); renderWeek(); renderSettings(); recompute(); net(); connectAccount();
 })();
 </script>
+
 
 </body>
 </html>
