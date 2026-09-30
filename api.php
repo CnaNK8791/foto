@@ -105,7 +105,7 @@ try {
             $r = ['php' => PHP_VERSION, 'pdo_mysql' => extension_loaded('pdo_mysql')];
             db();
             $r['connect'] = 'ok';
-            $need = ['users' => ['id', 'login', 'pass_hash', 'created_at'], 'plans' => ['user_id', 'data', 'updated_at']];
+            $need = ['orbita_users' => ['id', 'login', 'pass_hash', 'created_at'], 'orbita_plans' => ['user_id', 'data', 'updated_at']];
             foreach ($need as $table => $cols) {
                 try {
                     $st = db()->query("SELECT * FROM `$table` LIMIT 0");
@@ -127,7 +127,7 @@ try {
             if (!$uid) {
                 out(['user' => null]);
             }
-            $st = db()->prepare('SELECT login FROM users WHERE id = ?');
+            $st = db()->prepare('SELECT login FROM orbita_users WHERE id = ?');
             $st->execute([$uid]);
             $u = $st->fetch();
             if (!$u) {
@@ -139,12 +139,12 @@ try {
             requirePost($isPost);
             $login = cleanLogin($in['login'] ?? '');
             $pass = cleanPassword($in['password'] ?? '');
-            $st = db()->prepare('SELECT id FROM users WHERE login = ?');
+            $st = db()->prepare('SELECT id FROM orbita_users WHERE login = ?');
             $st->execute([$login]);
             if ($st->fetch()) {
                 out(['error' => 'login_taken'], 409);
             }
-            $st = db()->prepare('INSERT INTO users (login, pass_hash) VALUES (?, ?)');
+            $st = db()->prepare('INSERT INTO orbita_users (login, pass_hash) VALUES (?, ?)');
             $st->execute([$login, password_hash($pass, PASSWORD_DEFAULT)]);
             session_regenerate_id(true);
             $_SESSION['uid'] = (int)db()->lastInsertId();
@@ -154,7 +154,7 @@ try {
             requirePost($isPost);
             $login = trim((string)($in['login'] ?? ''));
             $pass = (string)($in['password'] ?? '');
-            $st = db()->prepare('SELECT id, login, pass_hash FROM users WHERE login = ?');
+            $st = db()->prepare('SELECT id, login, pass_hash FROM orbita_users WHERE login = ?');
             $st->execute([$login]);
             $u = $st->fetch();
             if (!$u || !password_verify($pass, $u['pass_hash'])) {
@@ -173,7 +173,7 @@ try {
 
         case 'load':
             $uid = requireUser();
-            $st = db()->prepare('SELECT data, updated_at FROM plans WHERE user_id = ?');
+            $st = db()->prepare('SELECT data, updated_at FROM orbita_plans WHERE user_id = ?');
             $st->execute([$uid]);
             $row = $st->fetch();
             out(['data' => $row ? json_decode($row['data'], true) : null, 'updated_at' => $row['updated_at'] ?? null]);
@@ -189,13 +189,13 @@ try {
             if ($json === false || strlen($json) > 2 * 1024 * 1024) {
                 out(['error' => 'too_large'], 413);
             }
-            $st = db()->prepare('SELECT 1 FROM plans WHERE user_id = ?');
+            $st = db()->prepare('SELECT 1 FROM orbita_plans WHERE user_id = ?');
             $st->execute([$uid]);
             if ($st->fetch()) {
-                $st = db()->prepare('UPDATE plans SET data = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?');
+                $st = db()->prepare('UPDATE orbita_plans SET data = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?');
                 $st->execute([$json, $uid]);
             } else {
-                $st = db()->prepare('INSERT INTO plans (user_id, data) VALUES (?, ?)');
+                $st = db()->prepare('INSERT INTO orbita_plans (user_id, data) VALUES (?, ?)');
                 $st->execute([$uid, $json]);
             }
             out(['ok' => true]);
