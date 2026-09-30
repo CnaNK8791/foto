@@ -3,3 +3,4 @@ npm-debug.log*
 .DS_Store
 *.log
 schedule/config.php
+orbita-schedule.zip
