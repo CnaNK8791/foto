@@ -216,6 +216,8 @@ input[type=date]{font-family:var(--f-mono)}
 .chip.est{color:var(--dim);border:1px dashed rgba(255,255,255,.12)}
 .emin{grid-column:2;font-family:var(--f-mono);font-size:11px;color:var(--accent-2);white-space:normal;font-variant-numeric:tabular-nums}
 .emin:empty{display:none}
+.rm{all:unset;cursor:pointer;grid-column:2;justify-self:start;margin-top:4px;font-size:10.5px;color:var(--dim);border-bottom:1px dashed rgba(255,255,255,.15)}
+.rm:hover,.rm:focus-visible{color:var(--late);border-color:var(--late)}
 .sub{grid-column:1 / -1;display:grid;grid-template-columns:auto minmax(0,1fr);gap:2px 7px;align-items:start;margin:6px -3px 0 -3px;padding:6px 7px;border-radius:8px;background:rgba(140,136,132,.13);box-shadow:inset 2px 0 0 rgba(255,122,26,.45)}
 .entry.math .sub{box-shadow:inset 2px 0 0 rgba(61,139,255,.45)}
 .entry.done .sub{background:rgba(255,255,255,.03);box-shadow:inset 2px 0 0 rgba(255,255,255,.12)}
@@ -700,14 +702,14 @@ function rowHTML(x, o) {
   return `${btn}<div class="etitle"><div class="t" title="${esc(dispTitle(x))}">${esc(dispTitle(x))}</div><div class="m">${chips}</div></div><div class="emin">${min}</div>`;
 }
 // видео и его ДЗ в одной карточке
-function listHTML(rows, done) {
+function listHTML(rows, done, removable) {
   const used = new Set(), out = [];
   rows.forEach(r => {
     if (used.has(r.item.id)) return;
     used.add(r.item.id);
     const subs = r.item.kind === "lesson" ? rows.filter(h => h.item.kind === "hw" && h.item.dep === r.item.id && !used.has(h.item.id)) : [];
     subs.forEach(h => used.add(h.item.id));
-    out.push(`<li class="entry ${r.item.kind} ${subj(r.item)}${done ? " done" : ""}${subs.length ? " grp" : ""}">${rowHTML(r.item, { min: r.min, done })}${subs.map(h => `<div class="sub">${rowHTML(h.item, { min: h.min, done })}</div>`).join("")}</li>`);
+    out.push(`<li class="entry ${r.item.kind} ${subj(r.item)}${done ? " done" : ""}${subs.length ? " grp" : ""}">${rowHTML(r.item, { min: r.min, done })}${subs.map(h => `<div class="sub">${rowHTML(h.item, { min: h.min, done })}</div>`).join("")}${removable && !done ? `<button class="rm" data-rm="${r.item.id}" title="Перенести на следующие дни">убрать из сегодняшнего дня</button>` : ""}</li>`);
   });
   return out.join("");
 }
@@ -742,9 +744,9 @@ function renderPlan() {
     let body = "";
     if (date === t && S.askAdd && plan.locked && S.lock && !S.lock.declined && doneMin > 0 && plan.nextPick)
       body += `<div class="askbar"><span>Добавить ещё занятие на сегодня? Следующее: «${esc(plan.nextPick.title.length > 48 ? plan.nextPick.title.slice(0, 46) + "…" : plan.nextPick.title)}»${plan.nextPick.min ? ", " + hm(plan.nextPick.min) : ""}.</span><div class="askbtns"><button class="btn mini" data-ask="yes">Добавить</button><button class="ghost" data-ask="no">Нет</button></div></div>`;
-    if (entries.length) body += `<ul class="entries">${listHTML(entries, false)}</ul>`;
+    if (entries.length) body += `<ul class="entries">${listHTML(entries, false, date === t && !!S.lock && S.lock.date === t)}</ul>`;
     if (done.length) body += `${entries.length ? `<div class="donesep">просмотрено</div>` : ""}<ul class="entries" style="margin-top:${entries.length ? 0 : 8}px">${listHTML(done.map(x => ({ item: x, min: cost(x) })), true)}</ul>`;
-    if (!body) body = `<div class="empty">${past ? "—" : isOff ? "выходной" : date < plan.start ? "до начала плана" : plan.total ? "свободно: новые уроки ещё не вышли" : "всё сделано"}</div>`;
+    if (!body) body = `<div class="empty">${past ? "—" : isOff ? "выходной" : date < plan.start ? "до начала плана" : date === t && S.lock && S.lock.date === t ? "на сегодня занятий нет" : plan.total ? "свободно: новые уроки ещё не вышли" : "всё сделано"}</div>`;
     cols.push(`<article class="day ${date === t ? "is-today" : ""} ${past ? "past" : ""} ${isOff && !past ? "offday" : ""}">
       <div class="colhead">
         <div class="row1"><div class="date"><span class="num">${dt.getDate()}</span><span class="mo">${MONTHS[dt.getMonth()]}</span><span class="wk">${WD[i]}</span></div><span class="hmeta">${date === t ? `<span class="tag-today">сегодня</span>` : ""}${meta}</span></div>
@@ -832,6 +834,12 @@ $("view-plan").addEventListener("click", e => {
   const o = e.target.closest("[data-off]"); if (o) return toggleOff(o.dataset.off);
   const c = e.target.closest("[data-done]"); if (c) { const x = items.find(i => i.id === c.dataset.done); if (x) { x.done = true; x.doneDate = todayISO(); if (S.lock) S.lock.declined = false; save(); recompute(); } return; }
   const u = e.target.closest("[data-undo]"); if (u) { const x = items.find(i => i.id === u.dataset.undo); if (x) { x.done = false; delete x.doneDate; save(); recompute(); } return; }
+  const rm = e.target.closest("[data-rm]");
+  if (rm && S.lock) {
+    const ids = new Set([rm.dataset.rm, ...items.filter(h => h.kind === "hw" && h.dep === rm.dataset.rm).map(h => h.id)]);
+    S.lock.items = S.lock.items.filter(li => !ids.has(li.id));
+    save(); recompute(); return;
+  }
   const q = e.target.closest("[data-ask]");
   if (q) {
     if (q.dataset.ask === "yes" && S.lock && plan.nextPick) plan.nextPick.ids.forEach(id => S.lock.items.push({ id }));
