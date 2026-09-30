@@ -24,6 +24,8 @@
   --accent:#ff7a1a;
   --accent-2:#ffb35c;
   --ember:#ff4d1f;
+  --math:#3d8bff;
+  --math-2:#8fc0ff;
   --late:#ff3b3b;
   --ok:#8ee6b0;
   --f-display:"Unbounded", "Arial Black", system-ui, sans-serif;
@@ -80,6 +82,16 @@ h1 .glow{background:linear-gradient(90deg,var(--accent-2),var(--accent) 40%,var(
 .wd.weekend label{color:var(--accent-2)}
 .wd output{font-family:var(--f-mono);font-size:13px;font-weight:600;font-variant-numeric:tabular-nums}
 .wd output.off{color:var(--dim);font-weight:400;font-size:11px}
+.deck-main{display:flex;flex-direction:column;gap:8px;min-width:0}
+.mix{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:12px;padding:6px 10px;border-radius:11px;background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.05)}
+.mix span{font-size:12px;font-weight:600;white-space:nowrap}
+.mix b{font-family:var(--f-mono);font-size:13px}
+.mix .ml{color:var(--math-2)}
+.mix .mr{color:var(--accent-2);text-align:right}
+.mix small{display:block;font-family:var(--f-mono);font-size:10px;font-weight:400;color:var(--dim)}
+#mix{background:linear-gradient(90deg,var(--math) var(--p,50%),var(--accent) var(--p,50%))}
+#mix::-webkit-slider-thumb{box-shadow:0 0 0 4px rgba(255,255,255,.18),0 0 14px rgba(255,255,255,.5)}
+#mix::-moz-range-thumb{box-shadow:0 0 0 4px rgba(255,255,255,.18),0 0 14px rgba(255,255,255,.5)}
 .deck-side{display:flex;flex-direction:column;align-items:stretch;gap:6px}
 .deck-total{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:flex;justify-content:space-between;gap:10px}
 .deck-total b{font-family:var(--f-mono);color:var(--fg);font-size:13px;letter-spacing:0}
@@ -143,6 +155,12 @@ input[type=date]{font-family:var(--f-mono)}
 .colhead .row2{display:flex;align-items:center;gap:6px}
 .colhead .load{flex:1;width:auto}
 .empty{margin:auto 0;text-align:center;font-size:12px;color:var(--dim);padding:18px 4px}
+.entry.math:not(.done){background:rgba(18,38,78,.35)}
+.entry.math.lesson:not(.done){box-shadow:inset 2px 0 0 var(--math)}
+.entry.math.hw:not(.done){box-shadow:inset 2px 0 0 rgba(61,139,255,.45)}
+.entry.math:not(.done) .chip.kind,.entry.math:not(.done) .emin{color:var(--math-2)}
+.entry.math:not(.done) .chip.course{color:var(--math-2);border-color:rgba(61,139,255,.35)}
+.entry.math .check{border-color:rgba(61,139,255,.6)}
 .entry.done{background:rgba(255,255,255,.03);box-shadow:inset 2px 0 0 rgba(255,255,255,.12)}
 .entry.done .t{color:var(--dim);text-decoration:line-through;text-decoration-color:rgba(255,255,255,.2)}
 .entry.done .chip,.entry.done .emin{color:var(--dim);border-color:rgba(255,255,255,.08);background:none}
@@ -183,8 +201,8 @@ input[type=date]{font-family:var(--f-mono)}
 .chip.late{background:rgba(255,59,59,.16);color:var(--late);border:1px solid rgba(255,59,59,.4)}
 .chip.part{color:var(--muted);background:rgba(255,255,255,.06)}
 .chip.est{color:var(--dim);border:1px dashed rgba(255,255,255,.12)}
-.emin{grid-column:2;font-family:var(--f-mono);font-size:11px;color:var(--accent-2);white-space:nowrap;font-variant-numeric:tabular-nums}
-.emin small{color:var(--dim);font-size:9.5px;margin-left:5px}
+.emin{grid-column:2;font-family:var(--f-mono);font-size:11px;color:var(--accent-2);white-space:normal;font-variant-numeric:tabular-nums}
+.emin small{color:var(--dim);font-size:9.5px;margin-left:5px;white-space:nowrap}
 .slim{display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:12px;border:1px dashed var(--line);color:var(--dim);font-size:12px;flex-wrap:wrap}
 .slim b{font-family:var(--f-mono);font-weight:600;color:var(--muted);font-size:11px}
 .slim.off{border-style:solid;background:repeating-linear-gradient(135deg,rgba(255,122,26,.07) 0 6px,transparent 6px 12px)}
@@ -256,7 +274,14 @@ select{font:inherit;font-size:13px;color:var(--fg);background:var(--bg2);border:
   </section>
 
   <section class="deck panel" aria-label="Время по дням недели">
-    <div class="week" id="week"></div>
+    <div class="deck-main">
+      <div class="week" id="week"></div>
+      <div class="mix">
+        <span class="ml">Математика <b id="mixM">50%</b><small id="mixMh"></small></span>
+        <input type="range" id="mix" min="0" max="100" step="5" aria-label="Доля математики, процентов">
+        <span class="mr"><b id="mixI">50%</b> Информатика<small id="mixIh"></small></span>
+      </div>
+    </div>
     <div class="deck-side">
       <div class="deck-total"><span>Часов в неделю</span><b id="weekTotal">—</b></div>
       <div class="deck-btns">
@@ -331,8 +356,9 @@ const fmt = s => { const d = parse(s); return `${d.getDate()} ${MONTHS[d.getMont
 const dur = (h, m, s) => Math.round(h*60 + m + s/60);
 
 /* ---------- seed data (со скриншотов) ---------- */
-const COURSES = { ege: "ЕГЭ · Информатика", p26: "Практика · №26" };
-const SHORT = { ege: "ЕГЭ", p26: "№26" };
+const COURSES = { ege: "ЕГЭ · Информатика", p26: "Практика · №26", math: "Математика · база" };
+const SHORT = { ege: "ИНФ", p26: "№26", math: "МАТ" };
+const subj = x => x.course === "math" ? "math" : "inf";
 let uid = 0;
 const L = (course, title, date, d = null, unknown = false) => ({ id: "i" + (++uid), course, kind: "lesson", title, date, dur: d, deadline: null, dep: null, done: false, unknown });
 const H = (course, title, date, deadline, dep) => ({ id: "i" + (++uid), course, kind: "hw", title, date, dur: null, deadline, dep: dep ? dep.id : null, done: false, individual: !deadline });
@@ -391,20 +417,68 @@ function seed() {
    ["Задание 26 | Основы построения моделей: конференц-зал","2026-10-31"],
    ["Задание 26 | Основы построения моделей: камеры хранения","2026-11-07"]].forEach(([t,d]) => a(L("p26",t,d)));
   ["2026-11-14","2026-11-21","2026-11-28","2026-12-12","2026-12-19","2027-01-16"].forEach(d => a(L("p26",U,d,null,true)));
+  seedMath(it);
   return it;
 }
 
-const DEFAULTS = { week:[120,120,120,120,120,240,180], off:[], speed:1, hwMin:45, planMin:90, minChunk:20, incHW:true, start:"" };
+// Математика: курс математической базы (только уроки без красного креста)
+function seedMath(it) {
+  const a = (x) => (it.push(x), x);
+  const M = (t, d, du) => a(L("math", t, d, du));
+  const HM = (t, d, dep, deadline = null) => a(H("math", t, d, deadline, dep));
+  const Z = (t, d) => { const x = a(H("math", t, d, null, null)); x.done = true; x.doneDate = ""; x.individual = false; return x; };
+  const log1 = M("Логика. Утверждение и отрицание. Доказательство от противного","2026-07-06",dur(0,54,42));
+  HM("ДЗ-1 | №20 | Логика. Утверждение и отрицание. Метод от противного. Принцип крайнего","2026-07-06",log1);
+  M("Методы решения линейных уравнений и линейные уравнения с параметром | Часть-1 | №7,8,12,14,19","2026-07-07",dur(1,43,47));
+  Z("ДЗ-2 | №7,8,12,14,19 | Линейные уравнения и линейная функция | Часть 1","2026-07-07");
+  M("Уравнения и неравенства с модулями. Числовые сравнения. Линейные неравенства | №7,8,12,14,16,19","2026-07-16",dur(2,49,55));
+  Z("ДЗ-3 | №7,8,12,14,16,19 | Линейные неравенства, уравнения и неравенства с модулями","2026-07-16");
+  M("Линейная функция, пучок прямых. Системы уравнений и задачи с параметром | Часть-2 | №7,8,12,14,19","2026-07-18",dur(2,46,31));
+  Z("ДЗ-4 | №7,8,12,14,16,19 | Линейные уравнения и линейная функция | Часть 2","2026-07-18");
+  const mod = M("Неравенства с модулем. График модуля: «галочка/корыто». Кусочно-линейная функция. Параметры | №12,16,19","2026-07-21",dur(2,37,30));
+  HM("ДЗ-5 | №12,19 | Неравенства с модулем, график модуля, кусочно-линейная функция, пучок прямых","2026-07-21",mod);
+  M("Многочлены. ФСУ и разложение на множители | Часть-1 | №7,8,14,16,19","2026-07-24",dur(2,50,21));
+  Z("ДЗ-6 | №7,8,14,16,19 | Многочлены и ФСУ | Часть 1","2026-07-24");
+  M("Многочлены. ФСУ и разложение на множители | Часть-2 | №7,8,14,16,19","2026-07-29",dur(2,49,59));
+  Z("ДЗ-7 | №7,8,14,16,19 | Многочлены и ФСУ | Часть 2","2026-07-29");
+  M("Логика. Необходимость/достаточность. Круги Эйлера","2026-08-02",dur(2,42,40));
+  Z("ДЗ-8 | №20 | Логическое и/или, круги Эйлера, необходимость и достаточность","2026-08-02");
+  const pol3 = M("Многочлены и ФСУ. Параметры с разложением на линейные компоненты | Часть-3 | №7,8,12,14,16,19","2026-08-06",dur(2,30,32));
+  HM("ДЗ-9 | №7,8,14,16,19 | Многочлены и ФСУ | Часть 3","2026-08-06",pol3);
+  const kv1 = M("Квадратичная функция. Теорема Безу. Теорема Виета. Метод гвоздей. Задачи с параметром | Часть-1 | №7,8,9,10,11,12,14,16,19","2026-08-07",dur(2,51,8));
+  HM("ДЗ-10 | №7,8,10,11,12,14,16,19 | Квадратичная функция и квадратные уравнения | Часть 1","2026-08-07",kv1,"2026-09-28");
+  M("Квадратное неравенство. Рациональные неравенства. Метод интервалов. Совокупности и системы | №16,19","2026-08-13",dur(2,39,12));
+  Z("ДЗ-11 | №16,19 | Квадратные и рациональные неравенства, метод интервалов, системы и совокупности","2026-08-13");
+  const kv2 = M("Квадратичная функция. Теорема Безу. Теорема Виета. Метод гвоздей. Задачи с параметром | Часть-2 | №7,8,9,10,11,12,14,16,19","2026-08-15",dur(2,15,38));
+  HM("ДЗ-12 | №7,8,10,11,12,14,16,19 | Квадратичная функция и квадратные уравнения | Часть 2","2026-08-15",kv2);
+  const dir = M("Принцип Дирихле, умный перебор, принцип крайнего | №20","2026-08-20",dur(2,6,20));
+  HM("ДЗ-13 | №20 | Принцип Дирихле, умный перебор, принцип крайнего","2026-08-20",dir);
+  const ur1 = M("Методы решения уравнений. Дробно-рациональные, однородные, иррациональные уравнения. Уравнения высших степеней | Часть-1 | №7,8,14,16,19","2026-08-22",dur(2,41,0));
+  HM("ДЗ-14 | №7,8,14,16,19 | Разные методы решения уравнений | Часть 1","2026-08-22",ur1);
+  const fn = M("Функции. Монотонность, чётность, доминирующий модуль | №12,19","2026-08-26",dur(3,18,57));
+  HM("ДЗ-15 | №12,19 | Функции. Монотонность, ограниченность, симметрия, движение графика","2026-08-26",fn);
+  const lg = M("№8 Логарифмы и степени","2026-08-27",dur(1,39,30));
+  HM("ДЗ-16 | №7,8 | Логарифмы и степени","2026-08-27",lg);
+  const lgu = M("№7,14 Логарифмические и показательные уравнения","2026-08-27",dur(1,17,18));
+  HM("ДЗ-17 | №7,14 | Показательные и логарифмические уравнения","2026-08-27",lgu);
+  const ur2 = M("Методы решения уравнений. Дробно-рациональные, однородные, иррациональные уравнения. Уравнения высших степеней | Часть-2 | №7,8,14,16,19","2026-08-27");
+  HM("ДЗ-18 | №7,8,14,16,19 | Разные методы решения уравнений | Часть 2","2026-08-27",ur2);
+}
+
+const DEFAULTS = { week:[120,120,120,120,120,240,180], off:[], speed:1, hwMin:45, planMin:90, minChunk:20, incHW:true, start:"", mathPct:50 };
+const DATA_VER = 2;
 const KEY = "orbita-ege-v1";
 let S, items;
 function load() {
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) { const o = JSON.parse(raw); S = { ...DEFAULTS, ...o.S }; items = o.items; items.forEach(x => { if (x.done && !x.doneDate) x.doneDate = todayISO(); }); uid = items.reduce((m, x) => Math.max(m, +x.id.slice(1) || 0), 0); return; }
+    if (raw) { const o = JSON.parse(raw); S = { ...DEFAULTS, ...o.S }; items = o.items; items.forEach(x => { if (x.done && x.doneDate === undefined) x.doneDate = todayISO(); }); uid = items.reduce((m, x) => Math.max(m, +x.id.slice(1) || 0), 0);
+      if ((o.ver || 1) < 2 && !items.some(x => x.course === "math")) seedMath(items);
+      save(); return; }
   } catch (e) {}
   S = { ...DEFAULTS, off: [] }; items = seed();
 }
-function save() { try { localStorage.setItem(KEY, JSON.stringify({ S, items })); } catch (e) {} }
+function save() { try { localStorage.setItem(KEY, JSON.stringify({ ver: DATA_VER, S, items })); } catch (e) {} }
 
 /* ---------- scheduler ---------- */
 function cost(x) {
@@ -420,6 +494,8 @@ function schedule() {
   act.forEach(x => { rem[x.id] = cost(x); dl[x.id] = x.deadline || null; });
   // урок наследует самый ранний дедлайн своих ДЗ
   act.forEach(x => { if (x.kind === "hw" && x.dep && x.deadline && rem[x.dep] != null) { const c = dl[x.dep]; if (!c || x.deadline < c) dl[x.dep] = x.deadline; } });
+  // строго по дате публикации; урок раньше ДЗ того же дня
+  const cmp = (a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : a.kind !== b.kind ? (a.kind === "lesson" ? -1 : 1) : (+a.id.slice(1)) - (+b.id.slice(1));
   const depOk = x => !x.dep || !(x.dep in rem) || rem[x.dep] <= 0 || byId[x.dep]?.done;
   const total = Object.values(rem).reduce((a, b) => a + b, 0);
   const days = []; let left = total, d = start, guard = 0;
@@ -427,22 +503,28 @@ function schedule() {
   const doneToday = items.filter(x => x.done && x.doneDate === todayISO()).reduce((a, x) => a + cost(x), 0);
   while (left > 0.5 && guard++ < 730) {
     const cap = off.has(d) ? 0 : S.week[dow(d)];
-    let free = d === todayISO() ? Math.max(0, cap - doneToday) : cap; const entries = []; const touched = new Set();
-    while (free > 0) {
-      const cand = act.filter(x => rem[x.id] > 0 && x.date <= d && depOk(x));
-      if (!cand.length) break;
-      cand.sort((a, b) => (dl[a.id] || "9999") < (dl[b.id] || "9999") ? -1 : (dl[a.id] || "9999") > (dl[b.id] || "9999") ? 1
-        : a.date < b.date ? -1 : a.date > b.date ? 1 : (a.kind === "lesson" ? -1 : 1) - (b.kind === "lesson" ? -1 : 1));
-      let pick = cand.find(x => !touched.has(x.id));
-      if (!pick) break;
-      const need = rem[pick.id];
-      const take = Math.min(free, need);
-      // не начинаем урок крошечным куском в конце дня
-      if (take < need && take < S.minChunk && entries.length) break;
-      entries.push({ item: pick, min: take, start: need === cost(pick), end: take >= need });
-      touched.add(pick.id);
-      rem[pick.id] -= take; free -= take; left -= take;
-    }
+    let free = d === todayISO() ? Math.max(0, cap - doneToday) : cap;
+    const entries = [];
+    const fill = (sb, lim) => {
+      let used = 0;
+      while (lim - used > 0) {
+        const cand = act.filter(x => subj(x) === sb && rem[x.id] > 0 && x.date <= d && depOk(x)).sort(cmp);
+        if (!cand.length) break;
+        const pick = cand[0], need = rem[pick.id], take = Math.min(lim - used, need);
+        // не начинаем урок крошечным куском
+        if (take < need && take < S.minChunk) break;
+        const ex = entries.find(e => e.item === pick);
+        if (ex) ex.min += take; else entries.push({ item: pick, min: take });
+        rem[pick.id] -= take; used += take; left -= take;
+      }
+      return used;
+    };
+    const mBudget = Math.round(free * S.mathPct / 100 / 5) * 5;
+    const budget = { math: mBudget, inf: free - mBudget };
+    const first = S.mathPct >= 50 ? ["math", "inf"] : ["inf", "math"];
+    first.forEach(sb => { free -= fill(sb, budget[sb]); });
+    // остаток дня отдаём предмету, у которого есть что смотреть
+    first.forEach(sb => { free -= fill(sb, free); });
     days.push({ date: d, cap, off: off.has(d) || cap === 0, entries });
     if (weekSum === 0) break;
     d = addDays(d, 1);
@@ -465,7 +547,7 @@ function renderWeek() {
     const row = document.createElement("div"); row.className = `wd${i > 4 ? " weekend" : ""}${m ? "" : " is-off"}`;
     row.innerHTML = `<div class="top"><label for="w${i}">${WD[i]}</label><output class="${m ? "" : "off"}">${m ? hmShort(m) : "выходной"}</output></div><input type="range" id="w${i}" min="0" max="480" step="15" value="${m}" style="--p:${m/480*100}%" aria-label="${WDL[i]}, минут">`;
     const r = row.querySelector("input"), o = row.querySelector("output");
-    r.addEventListener("input", () => { S.week[i] = +r.value; r.style.setProperty("--p", r.value/480*100 + "%"); o.textContent = +r.value ? hmShort(+r.value) : "выходной"; o.className = +r.value ? "" : "off"; row.classList.toggle("is-off", !+r.value); $("weekTotal").textContent = hm(S.week.reduce((a,b)=>a+b,0)); });
+    r.addEventListener("input", () => { S.week[i] = +r.value; r.style.setProperty("--p", r.value/480*100 + "%"); o.textContent = +r.value ? hmShort(+r.value) : "выходной"; o.className = +r.value ? "" : "off"; row.classList.toggle("is-off", !+r.value); $("weekTotal").textContent = hm(S.week.reduce((a,b)=>a+b,0)); renderMix(); });
     r.addEventListener("change", () => { save(); recompute(); });
     box.appendChild(row);
   });
@@ -503,7 +585,7 @@ function entryHTML(e) {
     e.late ? `<span class="chip late">после дедлайна</span>` : ""
   ].join("");
   const full = cost(x);
-  return `<li class="entry ${x.kind}">
+  return `<li class="entry ${x.kind} ${subj(x)}">
     <button class="check" data-done="${x.id}" aria-label="Отметить «${esc(x.title)}» выполненным" title="Готово">✓</button>
     <div class="etitle"><div class="t" title="${esc(x.title)}">${esc(x.title)}</div><div class="m">${chips}</div></div>
     <div class="emin">${hm(e.min)}${e.part ? `<small>из ${hm(full)}</small>` : x.kind === "lesson" && S.speed !== 1 ? `<small>×${S.speed}</small>` : ""}</div>
@@ -514,7 +596,7 @@ const mondayOf = s => addDays(s, -dow(s));
 let weekStart = null;
 
 function doneHTML(x) {
-  return `<li class="entry ${x.kind} done">
+  return `<li class="entry ${x.kind} ${subj(x)} done">
     <button class="check" data-undo="${x.id}" aria-label="Вернуть «${esc(x.title)}» в план" title="Вернуть в план">✓</button>
     <div class="etitle"><div class="t">${esc(x.title)}</div><div class="m"><span class="chip kind">${x.kind === "hw" ? "ДЗ" : "урок"}</span><span class="chip course">${esc(SHORT[x.course] || x.course)}</span></div></div>
     <div class="emin">${hm(cost(x))}</div>
@@ -526,7 +608,7 @@ function renderPlan() {
   if (!weekStart) weekStart = mondayOf(t);
   const byDate = Object.fromEntries(plan.days.map(d => [d.date, d]));
   const off = new Set(S.off);
-  let weekPlanned = 0, weekDone = 0;
+  let weekPlanned = 0, weekDone = 0; const bySubj = { math: 0, inf: 0 };
   const cols = [];
   for (let i = 0; i < 7; i++) {
     const date = addDays(weekStart, i), dt = parse(date);
@@ -536,6 +618,7 @@ function renderPlan() {
     const entries = day ? day.entries : [];
     const used = entries.reduce((a, e) => a + e.min, 0);
     weekPlanned += used; weekDone += done.length;
+    entries.forEach(e => { bySubj[subj(e.item)] += e.min; });
     const past = date < t, isOff = off.has(date) || !S.week[i];
     const cap = S.week[i];
     let meta = "";
@@ -561,7 +644,7 @@ function renderPlan() {
       <h3>${fmt(weekStart)} — ${fmt(end)}</h3>
       <button class="iconbtn" data-wk="1" aria-label="Следующая неделя">›</button>
       ${weekStart !== mondayOf(t) ? `<button class="ghost" data-wk="0">к текущей неделе</button>` : ""}
-      <div class="sum"><span>в плане <b>${hm(weekPlanned)}</b></span><span>просмотрено <b>${weekDone}</b></span>${plan.stuck ? `<span style="color:var(--late)">нет рабочего времени в неделе</span>` : ""}</div>
+      <div class="sum"><span>в плане <b>${hm(weekPlanned)}</b></span><span style="color:var(--math-2)">мат <b>${hm(bySubj.math)}</b></span><span style="color:var(--accent-2)">инф <b>${hm(bySubj.inf)}</b></span><span>просмотрено <b>${weekDone}</b></span>${plan.stuck ? `<span style="color:var(--late)">нет рабочего времени в неделе</span>` : ""}</div>
     </div>
     <div class="weekscroll"><div class="weekgrid">${cols.join("")}</div></div>`;
 }
@@ -589,7 +672,7 @@ function renderLib() {
     .slice().sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : a.kind === "lesson" ? -1 : 1);
   $("libList").innerHTML = list.map(x => `<div class="row ${x.done ? "is-done" : ""}" data-id="${x.id}">
       <button class="check ${x.done ? "on" : ""}" data-toggle="${x.id}" aria-label="Готово" aria-pressed="${x.done}">✓</button>
-      <span class="chip kind c-kind" style="background:${x.kind === "hw" ? "rgba(255,255,255,.07)" : "rgba(255,122,26,.16)"};text-align:center">${x.kind === "hw" ? "ДЗ" : "урок"}</span>
+      <span class="chip kind c-kind" style="background:${x.course === "math" ? "rgba(61,139,255,.18)" : x.kind === "hw" ? "rgba(255,255,255,.07)" : "rgba(255,122,26,.16)"};color:${x.course === "math" ? "var(--math-2)" : "inherit"};text-align:center">${x.kind === "hw" ? "ДЗ" : "урок"}</span>
       <input type="text" id="t-${x.id}" data-k="title" value="${esc(x.title)}" aria-label="Название">
       <div class="c-date"><span class="lbl">выход</span><input type="date" id="d-${x.id}" data-k="date" value="${x.date}" aria-label="Дата выхода"></div>
       <div class="c-dur"><span class="lbl">мин</span><input type="number" id="m-${x.id}" data-k="dur" value="${x.dur ?? ""}" placeholder="${x.kind === "hw" ? S.hwMin : S.planMin}" min="1" aria-label="Длительность, мин" title="${x.kind === "hw" ? "Минут на ДЗ" : "Длина видео, мин"}"></div>
@@ -600,7 +683,14 @@ function renderLib() {
   if (!$("aDate").value) $("aDate").value = todayISO();
 }
 
+function renderMix() {
+  const m = S.mathPct, wk = S.week.reduce((a, b) => a + b, 0);
+  $("mix").value = m; $("mix").style.setProperty("--p", m + "%");
+  $("mixM").textContent = m + "%"; $("mixI").textContent = (100 - m) + "%";
+  $("mixMh").textContent = hm(wk * m / 100) + " в неделю"; $("mixIh").textContent = hm(wk * (100 - m) / 100) + " в неделю";
+}
 function renderSettings() {
+  renderMix();
   $("speed").innerHTML = [1, 1.25, 1.5, 1.75, 2].map(v => `<button type="button" data-s="${v}" aria-pressed="${S.speed === v}">${v}×</button>`).join("");
   $("hwMin").value = S.hwMin; $("planMin").value = S.planMin; $("minChunk").value = S.minChunk;
   $("incHW").setAttribute("aria-checked", S.incHW);
@@ -629,6 +719,8 @@ $("view-plan").addEventListener("click", e => {
 });
 $("speed").addEventListener("click", e => { const b = e.target.closest("[data-s]"); if (!b) return; S.speed = +b.dataset.s; save(); renderSettings(); recompute(); });
 [["hwMin", 5], ["planMin", 15], ["minChunk", 5]].forEach(([k, min]) => $(k).addEventListener("change", e => { const v = Math.max(min, +e.target.value || min); S[k] = v; e.target.value = v; save(); recompute(); }));
+$("mix").addEventListener("input", e => { S.mathPct = +e.target.value; renderMix(); });
+$("mix").addEventListener("change", () => { save(); recompute(); });
 $("incHW").onclick = () => { S.incHW = !S.incHW; save(); renderSettings(); recompute(); };
 $("startDate").addEventListener("change", e => { S.start = e.target.value; save(); recompute(); });
 document.querySelector(".tabs").addEventListener("click", e => {
