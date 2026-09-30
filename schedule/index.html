@@ -201,9 +201,12 @@ input[type=date]{font-family:var(--f-mono)}
 .entry.lesson:not(.done){box-shadow:inset 2px 0 0 var(--accent)}
 .entry.hw:not(.done){box-shadow:inset 2px 0 0 rgba(255,122,26,.45)}
 /* запланированные (ещё не вышедшие) уроки — неброско */
-.entry.lesson.planned:not(.done){background:rgba(255,255,255,.025);box-shadow:inset 2px 0 0 rgba(255,255,255,.14)}
+.entry.lesson.planned:not(.done){background:rgba(255,122,26,.045);box-shadow:inset 2px 0 0 rgba(255,122,26,.3)}
+.entry.lesson.planned.math:not(.done){background:rgba(61,139,255,.06);box-shadow:inset 2px 0 0 rgba(61,139,255,.35)}
 .entry.planned:not(.done) > .etitle .t{color:var(--muted);font-weight:500}
 .entry.planned:not(.done) > .etitle .chip{color:var(--dim);border-color:rgba(255,255,255,.08)}
+.entry.planned.inf:not(.done) > .etitle .chip.course{color:rgba(255,179,92,.6);border-color:rgba(255,122,26,.2)}
+.entry.planned.math:not(.done) > .etitle .chip.course{color:rgba(143,192,255,.6);border-color:rgba(61,139,255,.22)}
 .entry.planned:not(.done) > .check{border-color:rgba(255,255,255,.18)}
 .chip.plan{color:var(--muted);background:rgba(255,255,255,.07);text-transform:lowercase}
 .check{all:unset;cursor:pointer;width:16px;height:16px;border-radius:5px;border:1.5px solid var(--line-hi);display:grid;place-items:center;color:transparent;font-size:11px}
