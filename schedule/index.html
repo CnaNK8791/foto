@@ -169,6 +169,9 @@ input[type=date]{font-family:var(--f-mono)}
 .entry.done .chip,.entry.done .emin{color:var(--dim);border-color:rgba(255,255,255,.08);background:none}
 .entry.done .check{background:rgba(255,255,255,.14);border-color:transparent;color:var(--muted)}
 .entry.done .check:hover{background:rgba(255,122,26,.25);color:var(--fg)}
+.askbar{margin-top:8px;padding:8px 9px;border-radius:10px;border:1px dashed var(--line-hi);background:rgba(255,122,26,.08);font-size:11.5px;line-height:1.35;display:flex;flex-direction:column;gap:6px}
+.askbtns{display:flex;gap:6px;align-items:center}
+.btn.mini{padding:4px 10px;font-size:11px;border-radius:8px}
 .donesep{font-family:var(--f-mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin:6px 0 2px}
 .day{border-radius:var(--r);background:var(--glass);border:1px solid var(--line);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);padding:10px 12px 12px;position:relative;overflow:hidden;animation:rise .5s both}
 @keyframes rise{from{transform:translateY(8px)}to{transform:none}}
@@ -312,6 +315,7 @@ select{font:inherit;font-size:13px;color:var(--fg);background:var(--bg2);border:
           <div class="field"><label for="planMin">Длина будущего урока, мин</label><input type="number" id="planMin" min="15" max="240" step="5"></div>
           <div class="field"><label for="minChunk">Мин. кусок урока, мин</label><input type="number" id="minChunk" min="5" max="120" step="5"></div>
           <div class="field"><span id="hwLbl">Планировать ДЗ</span><button class="switch" id="incHW" role="switch" aria-labelledby="hwLbl"></button></div>
+          <div class="field"><span id="askLbl">Предлагать новое занятие, когда отмечаю выполненное</span><button class="switch" id="askAdd" role="switch" aria-labelledby="askLbl"></button></div>
           <div class="field"><label for="startDate">Начать с</label><input type="date" id="startDate"></div>
         </div>
       </div>
@@ -468,7 +472,7 @@ function seedMath(it) {
   HM("ДЗ-18 | №7,8,14,16,19 | Разные методы решения уравнений | Часть 2","2026-08-27",ur2);
 }
 
-const DEFAULTS = { week:[120,120,120,120,120,240,180], off:[], speed:1, hwMin:45, planMin:90, minChunk:20, incHW:true, start:"", mathPct:50 };
+const DEFAULTS = { week:[120,120,120,120,120,240,180], off:[], speed:1, hwMin:45, planMin:90, minChunk:20, incHW:true, start:"", mathPct:50, askAdd:true, lock:null };
 const DATA_VER = 2;
 const KEY = "orbita-ege-v1";
 let S, items;
@@ -504,6 +508,11 @@ function schedule() {
   const days = []; let left = total, d = start, guard = 0;
   const weekSum = S.week.reduce((a, b) => a + b, 0);
   const doneToday = items.filter(x => x.done && x.doneDate === todayISO()).reduce((a, x) => a + cost(x), 0);
+  // план на сегодня фиксируется: отметка «готово» не подтягивает новые занятия сама
+  const t = todayISO();
+  const sig = JSON.stringify([S.week[dow(t)], S.off.includes(t), S.mathPct, S.speed, S.hwMin, S.planMin, S.minChunk, S.incHW, S.start]);
+  const lock = S.lock && S.lock.date === t && S.lock.sig === sig ? S.lock : null;
+  let newLock = null, nextPick = null;
   while (left > 0.5 && guard++ < 730) {
     const cap = off.has(d) ? 0 : S.week[dow(d)];
     let free = d === todayISO() ? Math.max(0, cap - doneToday) : cap;
@@ -525,9 +534,23 @@ function schedule() {
     const mBudget = Math.round(free * S.mathPct / 100 / 5) * 5;
     const budget = { math: mBudget, inf: free - mBudget };
     const first = S.mathPct >= 50 ? ["math", "inf"] : ["inf", "math"];
-    first.forEach(sb => { free -= fill(sb, budget[sb]); });
-    // остаток дня отдаём предмету, у которого есть что смотреть
-    first.forEach(sb => { free -= fill(sb, free); });
+    if (d === t && lock) {
+      lock.items.forEach(li => {
+        const x = byId[li.id]; const m = x && !x.done ? Math.min(li.min, rem[li.id] || 0) : 0;
+        if (m > 0) { entries.push({ item: x, min: m }); rem[li.id] -= m; left -= m; free -= m; }
+      });
+      // следующее занятие, которое можно предложить добавить: предмет, который отстаёт от выбранной доли
+      const cands = sb => act.filter(x => subj(x) === sb && rem[x.id] > 0 && x.date <= d && depOk(x)).sort(cmp);
+      const usedM = entries.filter(e => subj(e.item) === "math").reduce((a, e) => a + e.min, 0);
+      const usedAll = entries.reduce((a, e) => a + e.min, 0) || 1;
+      const order = usedM / usedAll * 100 <= S.mathPct ? ["math", "inf"] : ["inf", "math"];
+      for (const sb of order) { const c = cands(sb)[0]; if (c) { nextPick = { id: c.id, min: rem[c.id], title: c.title }; break; } }
+    } else {
+      first.forEach(sb => { free -= fill(sb, budget[sb]); });
+      // остаток дня отдаём предмету, у которого есть что смотреть
+      first.forEach(sb => { free -= fill(sb, free); });
+      if (d === t) newLock = { date: t, sig, items: entries.map(e => ({ id: e.item.id, min: e.min })) };
+    }
     days.push({ date: d, cap, off: off.has(d) || cap === 0, entries });
     if (weekSum === 0) break;
     d = addDays(d, 1);
@@ -537,7 +560,7 @@ function schedule() {
   days.forEach(day => day.entries.forEach(e => (parts[e.item.id] = parts[e.item.id] || []).push(e)));
   Object.values(parts).forEach(arr => { if (arr.length > 1) arr.forEach((e, i) => { e.part = `${i+1}/${arr.length}`; }); });
   days.forEach(day => day.entries.forEach(e => { e.late = !!(dl[e.item.id] && day.date > dl[e.item.id]); e.dl = dl[e.item.id]; }));
-  return { start, days, total, stuck: left > 0.5 };
+  return { start, days, total, stuck: left > 0.5, newLock, nextPick, locked: !!lock };
 }
 
 /* ---------- render ---------- */
@@ -630,6 +653,8 @@ function renderPlan() {
     else meta = `<button class="ghost" data-off="${date}" title="Сделать этот день выходным" aria-label="Сделать ${fmt(date)} выходным">вых.</button>`;
     const bar = !past && !isOff ? `<div class="row2"><div class="load" title="Загрузка дня"><span style="width:${Math.min(100, (used + (date === t ? doneMin : 0)) / cap * 100)}%"></span></div><span class="loadtxt">${hmShort(used + (date === t ? doneMin : 0))} / ${hmShort(cap)}</span></div>` : "";
     let body = "";
+    if (date === t && S.askAdd && plan.locked && S.lock && !S.lock.declined && doneMin > 0 && plan.nextPick)
+      body += `<div class="askbar"><span>Добавить ещё занятие на сегодня? Следующее: «${esc(plan.nextPick.title.length > 48 ? plan.nextPick.title.slice(0, 46) + "…" : plan.nextPick.title)}», ${hm(plan.nextPick.min)}.</span><div class="askbtns"><button class="btn mini" data-ask="yes">Добавить</button><button class="ghost" data-ask="no">Нет</button></div></div>`;
     if (entries.length) body += `<ul class="entries">${entries.map(entryHTML).join("")}</ul>`;
     if (done.length) body += `${entries.length ? `<div class="donesep">просмотрено</div>` : ""}<ul class="entries" style="margin-top:${entries.length ? 0 : 8}px">${done.map(doneHTML).join("")}</ul>`;
     if (!body) body = `<div class="empty">${past ? "—" : isOff ? "выходной" : date < plan.start ? "до начала плана" : plan.total ? "свободно: новые уроки ещё не вышли" : "всё сделано"}</div>`;
@@ -697,11 +722,13 @@ function renderSettings() {
   $("speed").innerHTML = [1, 1.25, 1.5, 1.75, 2].map(v => `<button type="button" data-s="${v}" aria-pressed="${S.speed === v}">${v}×</button>`).join("");
   $("hwMin").value = S.hwMin; $("planMin").value = S.planMin; $("minChunk").value = S.minChunk;
   $("incHW").setAttribute("aria-checked", S.incHW);
+  $("askAdd").setAttribute("aria-checked", S.askAdd);
   $("startDate").value = S.start || todayISO(); $("startDate").min = todayISO();
 }
 
 function recompute() {
   plan = schedule();
+  if (plan.newLock) { S.lock = plan.newLock; save(); }
   renderStats(); renderPlan(); renderCal();
   if (view === "lib") renderLib();
 }
@@ -716,14 +743,21 @@ $("calPrev").onclick = () => { const [y, m] = calMonth.split("-").map(Number); c
 $("calNext").onclick = () => { const [y, m] = calMonth.split("-").map(Number); const d = new Date(y, m, 1); calMonth = iso(d).slice(0, 7); renderCal(); };
 $("view-plan").addEventListener("click", e => {
   const o = e.target.closest("[data-off]"); if (o) return toggleOff(o.dataset.off);
-  const c = e.target.closest("[data-done]"); if (c) { const x = items.find(i => i.id === c.dataset.done); if (x) { x.done = true; x.doneDate = todayISO(); save(); recompute(); } return; }
+  const c = e.target.closest("[data-done]"); if (c) { const x = items.find(i => i.id === c.dataset.done); if (x) { x.done = true; x.doneDate = todayISO(); if (S.lock) S.lock.declined = false; save(); recompute(); } return; }
   const u = e.target.closest("[data-undo]"); if (u) { const x = items.find(i => i.id === u.dataset.undo); if (x) { x.done = false; delete x.doneDate; save(); recompute(); } return; }
+  const q = e.target.closest("[data-ask]");
+  if (q) {
+    if (q.dataset.ask === "yes" && S.lock && plan.nextPick) S.lock.items.push({ id: plan.nextPick.id, min: plan.nextPick.min });
+    if (S.lock) S.lock.declined = true;
+    save(); recompute(); return;
+  }
   const w = e.target.closest("[data-wk]"); if (w) { const k = +w.dataset.wk; weekStart = k ? addDays(weekStart, 7 * k) : mondayOf(todayISO()); renderPlan(); }
 });
 $("speed").addEventListener("click", e => { const b = e.target.closest("[data-s]"); if (!b) return; S.speed = +b.dataset.s; save(); renderSettings(); recompute(); });
 [["hwMin", 5], ["planMin", 15], ["minChunk", 5]].forEach(([k, min]) => $(k).addEventListener("change", e => { const v = Math.max(min, +e.target.value || min); S[k] = v; e.target.value = v; save(); recompute(); }));
 $("mix").addEventListener("input", e => { S.mathPct = +e.target.value; renderMix(); });
 $("mix").addEventListener("change", () => { save(); recompute(); });
+$("askAdd").onclick = () => { S.askAdd = !S.askAdd; save(); renderSettings(); recompute(); };
 $("incHW").onclick = () => { S.incHW = !S.incHW; save(); renderSettings(); recompute(); };
 $("startDate").addEventListener("change", e => { S.start = e.target.value; save(); recompute(); });
 document.querySelector(".tabs").addEventListener("click", e => {
