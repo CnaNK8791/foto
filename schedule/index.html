@@ -649,7 +649,7 @@ async function api(action, body) {
   let j = null; try { j = JSON.parse(text); } catch (e) {}
   return { ok: r.ok && !!j && !j.error, status: r.status, j, text };
 }
-const AUTH_ERR = { wrong_credentials: "Неверный логин или пароль", login_taken: "Такой логин уже занят", bad_login: "Логин: от 3 до 64 символов, без пробелов", bad_password: "Пароль: не короче 6 символов", not_configured: "Сервер не настроен: нет config.php", db_error: "Ошибка базы данных, проверьте config.php" };
+const AUTH_ERR = { wrong_credentials: "Неверный логин или пароль", login_taken: "Такой логин уже занят", bad_login: "Логин: от 3 до 64 символов, без пробелов", bad_password: "Пароль: не короче 6 символов", not_configured: "Сервер не настроен: нет config.php", db_error: "Ошибка базы данных, проверьте config.php", db_access: "База не пускает: неверный user или pass в config.php", db_name: "Нет базы с таким именем: проверьте name в config.php", db_host: "Не удаётся подключиться к серверу базы: проверьте host в config.php", db_tables: "В базе нет таблиц: выполните schema.sql в phpMyAdmin" };
 async function tryServer() {
   if (!/^https?:$/.test(location.protocol)) { localReason = "страница открыта как файл, а не с сайта"; return false; }
   let res; try { res = await api("me"); } catch (e) { localReason = "не удалось обратиться к api.php"; return false; }

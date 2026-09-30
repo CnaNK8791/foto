@@ -182,6 +182,18 @@ try {
             out(['error' => 'unknown_action'], 404);
     }
 } catch (PDOException $e) {
-    error_log('orbita api: ' . $e->getMessage());
-    out(['error' => 'db_error'], 500);
+    $msg = $e->getMessage();
+    error_log('orbita api: ' . $msg);
+    // понятная причина без раскрытия паролей и внутренних данных
+    $reason = 'db_error';
+    if (preg_match('/\[(1044|1045)\]/', $msg)) {
+        $reason = 'db_access';
+    } elseif (preg_match('/\[1049\]/', $msg)) {
+        $reason = 'db_name';
+    } elseif (preg_match('/\[(2002|2003|2005|2006)\]/', $msg)) {
+        $reason = 'db_host';
+    } elseif ($e->getCode() === '42S02' || strpos($msg, '1146') !== false || stripos($msg, 'no such table') !== false) {
+        $reason = 'db_tables';
+    }
+    out(['error' => $reason], 500);
 }
