@@ -769,7 +769,7 @@ function rowHTML(x, o) {
       `<span class="chip kind">${x.kind === "hw" ? "ДЗ" : "урок"}</span>`,
       `<span class="chip course">${esc(SHORT[x.course] || x.course)}</span>`,
       partChip,
-      `<span class="chip est">${x.date > todayISO() ? "будет" : x.kind === "hw" ? "выдано" : "вышел"} ${fmt(x.date)}</span>`,
+      x.date > todayISO() ? "" : `<span class="chip est">${x.kind === "hw" ? "выдано" : "вышел"} ${fmt(x.date)}</span>`,
     ].join("");
   const T = esc(dispTitle(x));
   let btn;
@@ -777,7 +777,7 @@ function rowHTML(x, o) {
   else if (o.done) btn = `<button class="check" data-undo="${x.id}" aria-label="Вернуть «${T}» в план" title="Вернуть в план">✓</button>`;
   else if (o.part && !o.final) btn = `<button class="check" data-prog="${x.id}" data-min="${o.min}" aria-label="Отметить часть «${T}» просмотренной" title="Часть просмотрена">✓</button>`;
   else btn = `<button class="check" data-done="${x.id}" aria-label="Отметить «${T}» выполненным" title="Готово">✓</button>`;
-  const min = x.kind === "lesson" && !x.dur ? "длина не определена"
+  const min = x.kind === "lesson" && !x.dur ? ""
     : o.min ? hm(o.min) + (o.part && !o.done ? `<small>из ${hm(cost(x))}</small>` : !o.done && x.kind === "lesson" && S.speed !== 1 ? `<small>×${S.speed}</small>` : "") : "";
   return `${btn}<div class="etitle"><div class="t" title="${T}">${T}</div><div class="m">${chips}</div></div><div class="emin">${min}</div>`;
 }
