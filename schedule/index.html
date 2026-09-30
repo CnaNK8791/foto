@@ -52,6 +52,13 @@ header.top{display:flex;align-items:center;justify-content:space-between;gap:16p
 .logo::after{content:"";position:absolute;inset:9px;border-radius:50%;background:var(--bg)}
 .brand b{font-family:var(--f-display);font-weight:800;font-size:18px;letter-spacing:.02em}
 .brand small{display:block;color:var(--muted);font-size:12px;letter-spacing:.08em;text-transform:uppercase}
+.acct{display:flex;align-items:center;gap:9px;margin-left:auto;padding:6px 12px;border-radius:12px;background:var(--glass);border:1px solid var(--line);min-width:0}
+.acct b{display:block;font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:22ch}
+.acct small{display:block;font-family:var(--f-mono);font-size:10px;color:var(--muted);white-space:nowrap}
+.acct .dot{width:8px;height:8px;border-radius:50%;background:var(--dim);flex:none}
+.acct[data-state="ok"] .dot{background:var(--ok);box-shadow:0 0 8px var(--ok)}
+.acct[data-state="sync"] .dot{background:var(--accent-2);box-shadow:0 0 8px var(--accent)}
+.acct[data-state="err"] .dot,.acct[data-state="ro"] .dot{background:var(--late)}
 .tabs{display:flex;gap:4px;padding:4px;border-radius:999px;background:var(--glass);border:1px solid var(--line);backdrop-filter:blur(14px)}
 .tabs button{all:unset;cursor:pointer;padding:8px 16px;border-radius:999px;font-weight:600;font-size:13px;color:var(--muted)}
 .tabs button[aria-selected="true"]{background:linear-gradient(135deg,var(--accent),var(--ember));color:#140903;box-shadow:0 0 18px rgba(255,110,30,.45)}
@@ -244,6 +251,9 @@ select{font:inherit;font-size:13px;color:var(--fg);background:var(--bg2);border:
 }
 @media (max-width:640px){
   .week{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .mix{grid-template-columns:1fr 1fr}
+  .mix #mix{grid-column:1 / -1;grid-row:2}
+  .acct{margin-left:0}
   .stats{grid-template-columns:repeat(2,minmax(0,1fr));width:100%}
   .weekgrid{grid-template-columns:minmax(0,1fr)}
   .day{min-height:0}
@@ -261,6 +271,7 @@ select{font:inherit;font-size:13px;color:var(--fg);background:var(--bg2);border:
 <div class="wrap" lang="ru">
   <header class="top">
     <div class="brand"><div class="logo" aria-hidden="true"></div><div><b>ОРБИТА</b><small>план просмотра уроков</small></div></div>
+    <div class="acct" id="acct" data-state="local" title="Данные плана хранятся в вашем аккаунте claude.ai"><span class="dot" aria-hidden="true"></span><span><b class="an">Гость</b><small class="as">Вход не выполнен · только этот браузер</small></span></div>
     <div class="tabs" role="tablist">
       <button role="tab" id="tab-plan" aria-selected="true" data-view="plan">Расписание</button>
       <button role="tab" id="tab-lib" aria-selected="false" data-view="lib">Уроки и ДЗ</button>
@@ -340,7 +351,7 @@ select{font:inherit;font-size:13px;color:var(--fg);background:var(--bg2);border:
         </form>
       </div>
     </section>
-  <p class="foot">Данные сохраняются в этом браузере. Уроки идут раньше своих ДЗ, срочные дедлайны в первую очередь, будущие уроки появляются в день выхода. Длительности вышедших уроков взяты с карточек, для будущих используется оценка.</p>
+  <p class="foot">План хранится в вашем аккаунте claude.ai, без входа — только в этом браузере. Видео идут по дате выхода и не делятся на части, ДЗ стоит сразу после своего видео. Длительности вышедших уроков взяты с карточек, для будущих используется оценка.</p>
 </div>
 
 <script>
@@ -475,16 +486,74 @@ const DEFAULTS = { week:[120,120,120,120,120,240,180], off:[], speed:1, hwMin:45
 const DATA_VER = 2;
 const KEY = "orbita-ege-v1";
 let S, items;
+function applyState(o) {
+  S = { ...DEFAULTS, ...o.S }; items = o.items;
+  items.forEach(x => { if (x.done && x.doneDate === undefined) x.doneDate = todayISO(); });
+  uid = items.reduce((m, x) => Math.max(m, +x.id.slice(1) || 0), 0);
+  if ((o.ver || 1) < 2 && !items.some(x => x.course === "math")) seedMath(items);
+}
 function load() {
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) { const o = JSON.parse(raw); S = { ...DEFAULTS, ...o.S }; items = o.items; items.forEach(x => { if (x.done && x.doneDate === undefined) x.doneDate = todayISO(); }); uid = items.reduce((m, x) => Math.max(m, +x.id.slice(1) || 0), 0);
-      if ((o.ver || 1) < 2 && !items.some(x => x.course === "math")) seedMath(items);
-      save(); return; }
+    if (raw) { applyState(JSON.parse(raw)); save(); return; }
   } catch (e) {}
   S = { ...DEFAULTS, off: [] }; items = seed();
 }
-function save() { try { localStorage.setItem(KEY, JSON.stringify({ ver: DATA_VER, S, items })); } catch (e) {} }
+function save() {
+  try { localStorage.setItem(KEY, JSON.stringify({ ver: DATA_VER, S, items })); } catch (e) {}
+  cloudSave();
+}
+
+/* ---------- аккаунт и база данных: у каждого пользователя свой план ---------- */
+let cloudRef = null, cloudBusy = false, cloudDirty = false, cloudTimer = null;
+function setAcct(state, name) {
+  const el = document.getElementById("acct"); if (!el) return;
+  const txt = { local: "Вход не выполнен · только этот браузер", sync: "сохраняю…", ok: "сохранено в аккаунте", ro: "только просмотр · не сохраняется", err: "не удалось сохранить" }[state];
+  el.dataset.state = state;
+  el.querySelector(".an").textContent = name || (state === "local" ? "Гость" : "Аккаунт");
+  el.querySelector(".as").textContent = txt;
+}
+function cloudSave() {
+  if (!cloudRef) return;
+  cloudDirty = true; clearTimeout(cloudTimer);
+  cloudTimer = setTimeout(cloudFlush, 700);
+}
+async function cloudFlush() {
+  if (!cloudRef || cloudBusy || !cloudDirty) return;
+  cloudBusy = true; cloudDirty = false; setAcct("sync", acctName);
+  try {
+    await cloudRef.set({ ver: DATA_VER, S: JSON.parse(JSON.stringify(S)), items: JSON.parse(JSON.stringify(items)), savedAt: new Date().toISOString() });
+    setAcct("ok", acctName);
+  } catch (e) {
+    if (e && e.code === "invalid_argument") { cloudRef = null; setAcct("ro", acctName); }
+    else if (e && e.code === "unavailable") { cloudDirty = true; setTimeout(cloudFlush, 1500 + Math.random() * 1000); }
+    else setAcct("err", acctName);
+  } finally { cloudBusy = false; if (cloudDirty) cloudSave(); }
+}
+let acctName = "";
+async function connectAccount() {
+  setAcct("local");
+  try {
+    if (!window.claude || !window.claude.use) return;
+    const [user, db] = await Promise.all([claude.use("user"), claude.use("db")]);
+    if (!user || !db) return;
+    const id = await user.id();
+    if (!id) return;
+    acctName = (await user.name()) || "";
+    const ref = db.doc("data/users/" + id + "/state");
+    setAcct("sync", acctName);
+    const snap = await ref.get();
+    cloudRef = ref;
+    if (snap.exists && snap.data() && Array.isArray(snap.data().items)) {
+      applyState(JSON.parse(JSON.stringify(snap.data())));
+      try { localStorage.setItem(KEY, JSON.stringify({ ver: DATA_VER, S, items })); } catch (e) {}
+      renderWeek(); renderSettings(); recompute();
+      setAcct("ok", acctName);
+    } else {
+      cloudDirty = true; cloudFlush(); // первый вход: переносим план из этого браузера в аккаунт
+    }
+  } catch (e) { setAcct("local"); }
+}
 
 /* ---------- scheduler ---------- */
 function cost(x) {
@@ -821,7 +890,7 @@ function net() {
   })();
 }
 
-load(); renderWeek(); renderSettings(); recompute(); net();
+load(); renderWeek(); renderSettings(); recompute(); net(); connectAccount();
 })();
 </script>
 
