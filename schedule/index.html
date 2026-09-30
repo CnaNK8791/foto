@@ -59,6 +59,15 @@ header.top{display:flex;align-items:center;justify-content:space-between;gap:16p
 .acct[data-state="ok"] .dot{background:var(--ok);box-shadow:0 0 8px var(--ok)}
 .acct[data-state="sync"] .dot{background:var(--accent-2);box-shadow:0 0 8px var(--accent)}
 .acct[data-state="err"] .dot,.acct[data-state="ro"] .dot{background:var(--late)}
+.acct.clickable{cursor:pointer}
+.acct.clickable:hover{border-color:var(--line-hi)}
+.authpanel{margin-top:14px;max-width:760px;margin-left:auto}
+.authrow{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.authrow input{flex:1 1 170px}
+.autherr{color:var(--late);font-size:12px;margin:8px 0 0;min-height:1em}
+.authme{margin:0 0 10px;font-size:13px}
+#authIn{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+#authIn[hidden]{display:none}
 .tabs{display:flex;gap:4px;padding:4px;border-radius:999px;background:var(--glass);border:1px solid var(--line);backdrop-filter:blur(14px)}
 .tabs button{all:unset;cursor:pointer;padding:8px 16px;border-radius:999px;font-weight:600;font-size:13px;color:var(--muted)}
 .tabs button[aria-selected="true"]{background:linear-gradient(135deg,var(--accent),var(--ember));color:#140903;box-shadow:0 0 18px rgba(255,110,30,.45)}
@@ -296,6 +305,24 @@ select{font:inherit;font-size:13px;color:var(--fg);background:var(--bg2);border:
       <button role="tab" id="tab-lib" aria-selected="false" data-view="lib">Уроки и ДЗ</button>
     </div>
   </header>
+
+  <section class="panel authpanel" id="auth" hidden aria-label="Вход в аккаунт">
+    <form id="authForm" autocomplete="on">
+      <h2>Вход в аккаунт</h2>
+      <p class="hint">План сохраняется в базе данных, и его видно с любого устройства.</p>
+      <div class="authrow">
+        <input type="text" id="aLogin" name="username" autocomplete="username" placeholder="Логин" aria-label="Логин" required>
+        <input type="password" id="aPass" name="password" autocomplete="current-password" placeholder="Пароль, от 6 символов" aria-label="Пароль" required>
+        <button class="btn" type="submit" data-mode="login">Войти</button>
+        <button class="btn sec" type="submit" data-mode="register">Создать аккаунт</button>
+      </div>
+      <p class="autherr" id="authErr" role="alert"></p>
+    </form>
+    <div id="authIn" hidden>
+      <p class="authme">Вы вошли как <b id="authName"></b>. План сохраняется в базе данных.</p>
+      <button class="btn sec" id="logoutBtn" type="button">Выйти</button>
+    </div>
+  </section>
 
   <section class="hero">
     <div>
@@ -578,9 +605,9 @@ function save() {
 let cloudRef = null, cloudBusy = false, cloudDirty = false, cloudTimer = null;
 function setAcct(state, name) {
   const el = document.getElementById("acct"); if (!el) return;
-  const txt = { local: "Вход не выполнен · только этот браузер", sync: "сохраняю…", ok: "сохранено в аккаунте", ro: "только просмотр · не сохраняется", err: "не удалось сохранить" }[state];
+  const txt = { local: "Вход не выполнен · только этот браузер", guest: "нажмите, чтобы войти", sync: "сохраняю…", ok: serverMode ? "сохранено в базе данных" : "сохранено в аккаунте", ro: "только просмотр · не сохраняется", err: "не удалось сохранить", nocfg: "сервер не настроен: нет config.php" }[state];
   el.dataset.state = state;
-  el.querySelector(".an").textContent = name || (state === "local" ? "Гость" : "Аккаунт");
+  el.querySelector(".an").textContent = name || (state === "local" || state === "guest" ? "Гость" : "Аккаунт");
   el.querySelector(".as").textContent = txt;
 }
 function cloudSave() {
@@ -596,13 +623,83 @@ async function cloudFlush() {
     setAcct("ok", acctName);
   } catch (e) {
     if (e && e.code === "invalid_argument") { cloudRef = null; setAcct("ro", acctName); }
+    else if (e && e.code === "logged_out") { cloudRef = null; acctName = ""; setAcct("guest"); showAuth(true); }
     else if (e && e.code === "unavailable") { cloudDirty = true; setTimeout(cloudFlush, 1500 + Math.random() * 1000); }
     else setAcct("err", acctName);
   } finally { cloudBusy = false; if (cloudDirty) cloudSave(); }
 }
 let acctName = "";
+
+/* ---------- свой сервер: PHP + MySQL (api.php рядом со страницей) ---------- */
+let serverMode = false;
+async function api(action, body) {
+  const opt = { credentials: "same-origin", headers: { "X-Requested-With": "orbita" } };
+  if (body) { opt.method = "POST"; opt.headers["Content-Type"] = "application/json"; opt.body = JSON.stringify(body); }
+  const r = await fetch("api.php?action=" + action, opt);
+  let j = null; try { j = await r.json(); } catch (e) {}
+  return { ok: r.ok, status: r.status, j };
+}
+const AUTH_ERR = { wrong_credentials: "Неверный логин или пароль", login_taken: "Такой логин уже занят", bad_login: "Логин: от 3 до 64 символов, без пробелов", bad_password: "Пароль: не короче 6 символов", not_configured: "Сервер не настроен: нет config.php", db_error: "Ошибка базы данных, проверьте config.php" };
+async function tryServer() {
+  if (!/^https?:$/.test(location.protocol)) return false;
+  let res; try { res = await api("me"); } catch (e) { return false; }
+  const { ok, j } = res;
+  if (j && j.error === "not_configured") { serverMode = true; setupAuth(); setAcct("nocfg", "Сервер"); return true; }
+  if (!ok || !j || !("user" in j)) return false;
+  serverMode = true; setupAuth();
+  if (j.user) await serverLogin(j.user.login); else { setAcct("guest"); showAuth(true); }
+  return true;
+}
+async function serverLogin(login) {
+  acctName = login; setAcct("sync", login); showAuth();
+  const { ok, j } = await api("load");
+  if (!ok) { setAcct("err", login); return; }
+  cloudRef = { set: async data => { const r = await api("save", { data }); if (!r.ok) throw { code: r.status === 401 ? "logged_out" : "unavailable" }; } };
+  if (j && j.data && Array.isArray(j.data.items)) {
+    applyState(j.data);
+    try { localStorage.setItem(KEY, JSON.stringify({ ver: DATA_VER, S, items })); } catch (e) {}
+    renderWeek(); renderSettings(); recompute();
+    setAcct("ok", login);
+    if ((j.data.ver || 1) < DATA_VER) cloudSave();
+  } else { cloudDirty = true; cloudFlush(); } // новый аккаунт: переносим план из этого браузера в базу
+}
+function showAuth(open) {
+  const p = $("auth"); if (!p) return;
+  if (open !== undefined) p.hidden = !open;
+  $("authForm").hidden = !!acctName && !!cloudRef;
+  $("authIn").hidden = !(acctName && cloudRef);
+  $("authName").textContent = acctName;
+}
+function setupAuth() {
+  const chip = $("acct");
+  chip.setAttribute("role", "button"); chip.tabIndex = 0; chip.classList.add("clickable");
+  chip.title = "Вход в аккаунт";
+  const toggle = () => { showAuth($("auth").hidden); if (!$("auth").hidden && !$("authForm").hidden) $("aLogin").focus(); };
+  chip.addEventListener("click", toggle);
+  chip.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } });
+  $("authForm").addEventListener("submit", async e => {
+    e.preventDefault();
+    const mode = e.submitter && e.submitter.dataset.mode === "register" ? "register" : "login";
+    $("authErr").textContent = "";
+    const btns = $("authForm").querySelectorAll("button"); btns.forEach(b => b.disabled = true);
+    try {
+      const { ok, j } = await api(mode, { login: $("aLogin").value, password: $("aPass").value });
+      if (!ok) { $("authErr").textContent = AUTH_ERR[j && j.error] || "Не получилось, попробуйте ещё раз"; return; }
+      $("aPass").value = "";
+      await serverLogin(j.user.login);
+      showAuth(false);
+    } catch (err) { $("authErr").textContent = "Нет связи с сервером"; }
+    finally { btns.forEach(b => b.disabled = false); }
+  });
+  $("logoutBtn").addEventListener("click", async () => {
+    try { await api("logout", {}); } catch (e) {}
+    cloudRef = null; acctName = ""; setAcct("guest"); showAuth(true);
+  });
+}
+
 async function connectAccount() {
   setAcct("local");
+  if (await tryServer()) return;
   try {
     if (!window.claude || !window.claude.use) return;
     const [user, db] = await Promise.all([claude.use("user"), claude.use("db")]);
