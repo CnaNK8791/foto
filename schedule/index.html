@@ -605,7 +605,12 @@ function schedule() {
   const doneToday = items.filter(x => x.done && x.doneDate === t).reduce((a, x) => a + cost(x), 0);
   const weekSum = S.week.reduce((a, b) => a + b, 0);
   const days = []; let d = start, guard = 0;
-  const place = (entries, x) => { const c = cost(x); entries.push({ item: x, min: c }); pending.delete(x.id); spent[subj(x)] += c; return c; };
+  const place = (entries, x) => {
+    const c = cost(x); entries.push({ item: x, min: c }); pending.delete(x.id); spent[subj(x)] += c;
+    // ДЗ к этому видео всегда идёт в тот же день, сразу за ним
+    if (x.kind === "lesson") act.filter(h => h.kind === "hw" && h.dep === x.id && pending.has(h.id)).forEach(h => { entries.push({ item: h, min: cost(h) }); pending.delete(h.id); });
+    return c;
+  };
   while (pending.size && guard++ < 730) {
     const cap = off.has(d) ? 0 : S.week[dow(d)];
     let free = d === t ? Math.max(0, cap - doneToday) : cap;
