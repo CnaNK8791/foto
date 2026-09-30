@@ -384,9 +384,9 @@ const fmt = s => { const d = parse(s); return `${d.getDate()} ${MONTHS[d.getMont
 const dur = (h, m, s) => Math.round(h*60 + m + s/60);
 
 /* ---------- seed data (со скриншотов) ---------- */
-const COURSES = { ege: "ЕГЭ · Информатика", p26: "Практика · №26", math: "Математика · база" };
-const SHORT = { ege: "ИНФ", p26: "№26", math: "МАТ" };
-const subj = x => x.course === "math" ? "math" : "inf";
+const COURSES = { ege: "ЕГЭ · Информатика", p26: "Практика · №26", math: "Математика · база", math2: "Математика · годовой курс" };
+const SHORT = { ege: "ИНФ", p26: "№26", math: "МАТ", math2: "МАТ" };
+const subj = x => x.course === "math" || x.course === "math2" ? "math" : "inf";
 let uid = 0;
 const L = (course, title, date, d = null, unknown = false) => ({ id: "i" + (++uid), course, kind: "lesson", title, date, dur: d, deadline: null, dep: null, done: false, unknown });
 const H = (course, title, date, deadline, dep) => ({ id: "i" + (++uid), course, kind: "hw", title, date, dur: null, deadline, dep: dep ? dep.id : null, done: false, individual: !deadline });
@@ -446,7 +446,42 @@ function seed() {
    ["Задание 26 | Основы построения моделей: камеры хранения","2026-11-07"]].forEach(([t,d]) => a(L("p26",t,d)));
   ["2026-11-14","2026-11-21","2026-11-28","2026-12-12","2026-12-19","2027-01-16"].forEach(d => a(L("p26",U,d,null,true)));
   seedMath(it);
+  seedMath2(it);
   return it;
+}
+
+// Математика: годовой курс (вебинары и ДЗ без красного креста)
+function seedMath2(it) {
+  const a = (x) => (it.push(x), x);
+  let last = null;
+  const W = (t, d, du = null) => (last = a(L("math2", t, d, du)));
+  const D = (t, d, deadline = null) => a(H("math2", t, d, deadline, last)); // ДЗ к последнему добавленному вебинару
+  W("Вебинар 0. Основы планиметрии", "2026-09-15", dur(2,53,32));
+  D("ДЗ-0 | №1,18 | Введение в планиметрию", "2026-09-15");
+  W("Вебинар 0. Остатки и делимость. Признаки равноостаточности. Десятичная запись числа. НОК и НОД. Алгоритм Евклида | Часть-1 | №20", "2026-09-17", dur(2,41,1));
+  D("ДЗ-0 | №20 | Остатки и делимость, десятичная запись числа, НОК и НОД | Часть 1", "2026-09-17");
+  W("Вебинар 1. Вся теория вероятностей из №4,5,6 для ЕГЭ 2027 по математике | +18 баллов за 4 часа", "2026-09-19");
+  D("ДЗ-1 | №4,5,6 | Вся теория вероятностей для ЕГЭ 2027 по математике", "2026-09-19");
+  W("Вебинар 1. №7,8 Тригонометрия с нуля | Тригонометрическая окружность | Основные формулы", "2026-09-20", dur(2,9,44));
+  D("ДЗ-1 | №7,8 | Тригонометрия с нуля, тригонометрическая окружность, основные формулы", "2026-09-20");
+  W("Вебинар 1. №2 Координатная плоскость | Векторы", "2026-09-25", dur(1,44,56));
+  D("ДЗ-1 | №2 | Векторы", "2026-09-25", "2026-10-02");
+  W("Вебинар 2. №8 | Тригонометрия | Формулы приведения | Практика", "2026-09-25", dur(2,8,26));
+  D("ДЗ-2 | №7,8 | Тригонометрия, формулы приведения, практика", "2026-09-25", "2026-10-01");
+  W("Вебинар 1. Среднее арифметическое | Идея минимальной суммы | Чётность", "2026-09-26", dur(1,34,34));
+  D("ДЗ-1 | №20 | Среднее арифметическое, минимальная сумма", "2026-09-26", "2026-10-02");
+  W("Вебинар 1. №1,18 Треугольник, параллелограмм, теорема Фалеса", "2026-09-27", dur(1,43,34));
+  D("ДЗ-1 | №1,18 | Треугольник, параллелограмм, теорема Фалеса", "2026-09-27", "2026-10-03");
+  [["Вебинар 2. №4,5,6 Цепочки событий. Условная вероятность", "2026-10-02"],
+   ["Вебинар 3. №8 | Тотальная практика по тригонометрии", "2026-10-02"],
+   ["Вебинар 1. №9 Производная", "2026-10-03"],
+   ["Вебинар 2. №1,18 Медиана, биссектриса, высота", "2026-10-03"],
+   ["Вебинар 2. Остатки | Признаки равноостаточности | Делимость", "2026-10-04"],
+   ["Вебинар 3. Инвариант", "2026-10-09"],
+   ["Вебинар 1. №13 Кредиты | Дифференцированные платежи", "2026-10-10"],
+   ["Вебинар 3. №1,18 Подобие треугольников", "2026-10-11"],
+   ["Вебинар 4. №1,18 Трапеция. Свойства. Дополнительные построения | Часть 1", "2026-10-23"],
+   ["Вебинар 4. №20 Остатки и делимость | Часть-3", "2026-10-24"]].forEach(([t, d]) => W(t, d));
 }
 
 // Математика: курс математической базы (только уроки без красного креста)
@@ -495,7 +530,7 @@ function seedMath(it) {
 }
 
 const DEFAULTS = { week:[120,120,120,120,120,240,180], off:[], speed:1, hwMin:45, planMin:90, minChunk:20, incHW:true, start:"", mathPct:50, askAdd:true, split:false, lock:null };
-const DATA_VER = 4;
+const DATA_VER = 5;
 const KEY = "orbita-ege-v1";
 let S, items;
 function applyState(o) {
@@ -503,6 +538,8 @@ function applyState(o) {
   items.forEach(x => { if (x.done && x.doneDate === undefined) x.doneDate = todayISO(); });
   uid = items.reduce((m, x) => Math.max(m, +x.id.slice(1) || 0), 0);
   if ((o.ver || 1) < 2 && !items.some(x => x.course === "math")) seedMath(items);
+  // v5: годовой курс математики
+  if ((o.ver || 1) < 5 && !items.some(x => x.course === "math2")) seedMath2(items);
   // v4: исправлена длина первого урока логики (2:54:42)
   if ((o.ver || 1) < 4) items.forEach(x => { if (x.course === "math" && x.kind === "lesson" && x.date === "2026-07-06" && x.dur === 55) x.dur = 175; });
   // v3: проверенные ДЗ по математике возвращаются в план и привязываются к своему видео
@@ -832,7 +869,7 @@ function renderLib() {
     .slice().sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : a.kind === "lesson" ? -1 : 1);
   $("libList").innerHTML = list.map(x => `<div class="row ${x.done ? "is-done" : ""}" data-id="${x.id}">
       <button class="check ${x.done ? "on" : ""}" data-toggle="${x.id}" aria-label="Готово" aria-pressed="${x.done}">✓</button>
-      <span class="chip kind c-kind" style="background:${x.course === "math" ? "rgba(61,139,255,.18)" : x.kind === "hw" ? "rgba(255,255,255,.07)" : "rgba(255,122,26,.16)"};color:${x.course === "math" ? "var(--math-2)" : "inherit"};text-align:center">${x.kind === "hw" ? "ДЗ" : "урок"}</span>
+      <span class="chip kind c-kind" style="background:${subj(x) === "math" ? "rgba(61,139,255,.18)" : x.kind === "hw" ? "rgba(255,255,255,.07)" : "rgba(255,122,26,.16)"};color:${subj(x) === "math" ? "var(--math-2)" : "inherit"};text-align:center">${x.kind === "hw" ? "ДЗ" : "урок"}</span>
       <input type="text" id="t-${x.id}" data-k="title" value="${esc(x.title)}" aria-label="Название">
       <div class="c-date"><span class="lbl">выход</span><input type="date" id="d-${x.id}" data-k="date" value="${x.date}" aria-label="Дата выхода"></div>
       <div class="c-dur"><span class="lbl">мин</span>${x.kind === "hw" ? `<span class="muted" style="font-size:12px">—</span>` : `<input type="number" id="m-${x.id}" data-k="dur" value="${x.dur ?? ""}" placeholder="${S.planMin}" min="1" aria-label="Длина видео, мин" title="Длина видео, мин">`}</div>
