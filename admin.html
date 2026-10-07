@@ -50,6 +50,9 @@ header{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
 .btn.sec{background:rgba(255,255,255,.04);color:var(--fg);border:1px solid var(--line);box-shadow:none;font-weight:600}
 .btn.sec:hover{border-color:var(--line-hi)}
 .btn.math{background:linear-gradient(135deg,#5aa0ff,var(--math));color:#051024;box-shadow:0 0 16px rgba(61,139,255,.35)}
+.btn.mock{background:linear-gradient(135deg,#ff7a6e,var(--late));color:#200303;box-shadow:0 0 16px rgba(255,90,74,.35)}
+tr.mock td{background:rgba(255,59,59,.05)}
+tr.mock td:first-child{box-shadow:inset 3px 0 0 var(--late)!important}
 .btn[disabled]{opacity:.45;cursor:default}
 button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent-2);outline-offset:2px}
 
@@ -125,6 +128,7 @@ td select[data-k="dep"]{width:230px}
       <span class="count" id="count"></span>
       <button class="btn" id="addLesson" type="button">+ Урок</button>
       <button class="btn math" id="addHw" type="button">+ ДЗ</button>
+      <button class="btn mock" id="addMock" type="button">+ Пробник</button>
       <button class="btn sec" id="saveAll" type="button" disabled>Сохранить всё</button>
     </div>
     <p class="status" id="status" role="status"></p>
@@ -136,7 +140,7 @@ td select[data-k="dep"]{width:230px}
         <tbody id="rows"></tbody>
       </table>
     </div>
-    <p class="legend">Длина — в формате ч:мм:сс, ч:мм или просто минуты. Пока «Вышло» выключено, урок стоит в расписании в день своей даты с длиной 0, даже если эта дата уже наступила.</p>
+    <p class="legend">Длина — в формате ч:мм:сс, ч:мм или просто минуты; пробник по умолчанию 3:55. Пока «Вышло» выключено, урок стоит в расписании в день своей даты с длиной 0, даже если эта дата уже наступила.</p>
   </main>
 </div>
 
@@ -170,7 +174,7 @@ td select[data-k="dep"]{width:230px}
 
   function render() {
     $("fCourse").innerHTML = [["all", "Все"], ...Object.entries(COURSES)].map(([k, l]) => `<button type="button" data-c="${k}" aria-pressed="${fCourse === k}">${l}</button>`).join("");
-    $("fKind").innerHTML = [["all", "Всё"], ["lesson", "Уроки"], ["hw", "ДЗ"]].map(([k, l]) => `<button type="button" data-kd="${k}" aria-pressed="${fKind === k}">${l}</button>`).join("");
+    $("fKind").innerHTML = [["all", "Всё"], ["lesson", "Уроки"], ["hw", "ДЗ"], ["mock", "Пробники"]].map(([k, l]) => `<button type="button" data-kd="${k}" aria-pressed="${fKind === k}">${l}</button>`).join("");
     const ql = q.toLowerCase();
     const list = rows.filter(r => r.id < 0 || ((fCourse === "all" || r.course === fCourse) && (fKind === "all" || r.kind === fKind) && (!ql || (r.title || "").toLowerCase().includes(ql))))
       .sort((a, b) => (a.id < 0) - (b.id < 0) || (a.date < b.date ? -1 : a.date > b.date ? 1 : a.id - b.id));
@@ -180,17 +184,17 @@ td select[data-k="dep"]{width:230px}
       return `<tr data-id="${r.id}" class="${MATH.has(r.course) ? "math" : "inf"} ${r.kind} ${r.dirty ? "dirty" : ""} ${r.id < 0 ? "new" : ""}">
         <td class="id">${r.id > 0 ? r.id : "новый"}</td>
         <td><select data-k="course" aria-label="Курс">${Object.entries(COURSES).map(([k, l]) => `<option value="${k}" ${r.course === k ? "selected" : ""}>${l}</option>`).join("")}</select></td>
-        <td><select data-k="kind" aria-label="Тип"><option value="lesson" ${r.kind === "lesson" ? "selected" : ""}>Урок</option><option value="hw" ${r.kind === "hw" ? "selected" : ""}>ДЗ</option></select></td>
-        <td><input data-k="title" value="${esc(r.title)}" placeholder="${r.kind === "hw" ? "Название ДЗ" : "Пусто — «Урок не определён»"}" aria-label="Название"></td>
+        <td><select data-k="kind" aria-label="Тип"><option value="lesson" ${r.kind === "lesson" ? "selected" : ""}>Урок</option><option value="hw" ${r.kind === "hw" ? "selected" : ""}>ДЗ</option><option value="mock" ${r.kind === "mock" ? "selected" : ""}>Пробник</option></select></td>
+        <td><input data-k="title" value="${esc(r.title)}" placeholder="${r.kind === "hw" ? "Название ДЗ" : r.kind === "mock" ? "Название пробника" : "Пусто — «Урок не определён»"}" aria-label="Название"></td>
         <td><input type="date" data-k="date" value="${esc(r.date)}" aria-label="Дата выхода"></td>
-        <td>${r.kind === "lesson" ? `<input data-k="dur" value="${esc(r.durText ?? fmtDur(r.dur))}" placeholder="ч:мм" aria-label="Длина">` : `<span class="na">—</span>`}</td>
-        <td>${r.kind === "lesson" ? `<span class="rel"><button type="button" class="switch" data-k="released" role="switch" aria-checked="${!!+r.released}" aria-label="Видео вышло"></button>${+r.released ? "вышло" : "нет"}</span>` : `<span class="na">—</span>`}</td>
+        <td>${r.kind !== "hw" ? `<input data-k="dur" value="${esc(r.durText ?? fmtDur(r.dur))}" placeholder="ч:мм" aria-label="Длина">` : `<span class="na">—</span>`}</td>
+        <td>${r.kind !== "hw" ? `<span class="rel"><button type="button" class="switch" data-k="released" role="switch" aria-checked="${!!+r.released}" aria-label="Видео вышло"></button>${+r.released ? "вышло" : "нет"}</span>` : `<span class="na">—</span>`}</td>
         <td>${r.kind === "hw" ? `<select data-k="dep" aria-label="Урок для ДЗ"><option value="">— без урока —</option>${depOpts}</select>` : `<span class="na">—</span>`}</td>
-        <td>${r.kind === "hw" ? `<input type="date" data-k="deadline" value="${esc(r.deadline || "")}" aria-label="Дедлайн">` : `<span class="na">—</span>`}</td>
+        <td>${r.kind !== "lesson" ? `<input type="date" data-k="deadline" value="${esc(r.deadline || "")}" aria-label="Дедлайн">` : `<span class="na">—</span>`}</td>
         <td><span class="acts"><button type="button" class="mini save" data-save ${r.dirty ? "" : "disabled"}>Сохранить</button><button type="button" class="mini del ${armed.has(r.id) ? "arm" : ""}" data-del>${armed.has(r.id) ? "Точно?" : "Удалить"}</button></span></td>
       </tr>`;
     }).join("") || `<tr><td colspan="10" class="empty">Ничего не найдено. Каталог пуст — добавь урок или выполни lessons.sql.</td></tr>`;
-    $("count").textContent = `${rows.filter(r => r.id > 0 && r.kind === "lesson").length} уроков · ${rows.filter(r => r.id > 0 && r.kind === "hw").length} ДЗ`;
+    $("count").textContent = `${rows.filter(r => r.id > 0 && r.kind === "lesson").length} уроков · ${rows.filter(r => r.id > 0 && r.kind === "hw").length} ДЗ · ${rows.filter(r => r.id > 0 && r.kind === "mock").length} пробн.`;
     $("saveAll").disabled = !rows.some(r => r.dirty);
   }
 
@@ -228,7 +232,7 @@ td select[data-k="dep"]{width:230px}
     let dur = r.dur;
     if (r.durText !== undefined) { dur = parseDur(r.durText); if (Number.isNaN(dur)) { status("Длина: используйте ч:мм:сс, ч:мм или минуты", "err"); return false; } }
     if (!r.date) { status("Укажите дату выхода", "err"); return false; }
-    const lesson = { id: r.id > 0 ? r.id : 0, course: r.course, kind: r.kind, title: r.title, date: r.date, dur: r.kind === "lesson" ? dur : null, released: r.kind === "hw" ? 1 : +r.released, dep: r.kind === "hw" && r.dep ? +r.dep : null, deadline: r.kind === "hw" ? (r.deadline || null) : null };
+    const lesson = { id: r.id > 0 ? r.id : 0, course: r.course, kind: r.kind, title: r.title, date: r.date, dur: r.kind !== "hw" ? dur : null, released: r.kind === "hw" ? 1 : +r.released, dep: r.kind === "hw" && r.dep ? +r.dep : null, deadline: r.kind !== "lesson" ? (r.deadline || null) : null };
     const { ok, j } = await api("admin_save", { lesson });
     if (!ok) { status(ERR[j && j.error] || "Не удалось сохранить", "err"); return false; }
     Object.assign(r, j.lesson, { id: +j.lesson.id, dirty: false }); delete r.durText;
@@ -243,12 +247,13 @@ td select[data-k="dep"]{width:230px}
   function addRow(kind) {
     const course = fCourse !== "all" ? fCourse : (kind === "hw" ? "math2" : "ege");
     const today = new Date(); const iso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
-    rows.push({ id: --tmp, course, kind, title: "", date: iso, dur: null, released: 0, dep: null, deadline: null, dirty: true });
+    rows.push({ id: --tmp, course, kind, title: "", date: iso, dur: kind === "mock" ? 235 : null, released: 0, dep: null, deadline: null, dirty: true });
     render();
     const inp = $("rows").querySelector('tr.new input[data-k="title"]'); if (inp) inp.focus();
   }
   $("addLesson").onclick = () => addRow("lesson");
   $("addHw").onclick = () => addRow("hw");
+  $("addMock").onclick = () => addRow("mock");
   $("fCourse").addEventListener("click", e => { const b = e.target.closest("[data-c]"); if (b) { fCourse = b.dataset.c; render(); } });
   $("fKind").addEventListener("click", e => { const b = e.target.closest("[data-kd]"); if (b) { fKind = b.dataset.kd; render(); } });
   $("q").addEventListener("input", e => { q = e.target.value; render(); });

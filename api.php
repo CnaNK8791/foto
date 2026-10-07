@@ -100,7 +100,7 @@ function cleanLesson(array $in): array
     if (!in_array($course, COURSES, true)) {
         out(['error' => 'bad_course'], 422);
     }
-    $kind = ($in['kind'] ?? '') === 'hw' ? 'hw' : 'lesson';
+    $kind = in_array($in['kind'] ?? '', ['hw', 'mock'], true) ? $in['kind'] : 'lesson';
     $title = trim((string)($in['title'] ?? ''));
     if (mb_strlen($title) > 500) {
         out(['error' => 'bad_title'], 422);
@@ -115,7 +115,7 @@ function cleanLesson(array $in): array
         out(['error' => 'bad_dur'], 422);
     }
     $deadline = $in['deadline'] ?? null;
-    if ($deadline === '' || $kind !== 'hw') {
+    if ($deadline === '' || $kind === 'lesson') {
         $deadline = null;
     }
     if ($deadline !== null && !preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)$deadline)) {
@@ -132,7 +132,8 @@ function cleanLesson(array $in): array
     }
     return [
         'course' => $course, 'kind' => $kind, 'title' => $title, 'date' => $date,
-        'dur' => $kind === 'hw' ? null : $dur, 'released' => !empty($in['released']) ? 1 : 0,
+        // пробник по умолчанию идёт 3 ч 55 мин
+        'dur' => $kind === 'hw' ? null : ($kind === 'mock' && $dur === null ? 235 : $dur), 'released' => !empty($in['released']) ? 1 : 0,
         'dep' => $dep, 'deadline' => $deadline,
     ];
 }

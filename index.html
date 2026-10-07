@@ -229,6 +229,12 @@ input[type=date]{font-family:var(--f-mono)}
 .entry.planned.inf:not(.done) > .etitle .chip.course{color:rgba(255,179,92,.6);border-color:rgba(255,122,26,.2)}
 .entry.planned.math:not(.done) > .etitle .chip.course{color:rgba(143,192,255,.6);border-color:rgba(61,139,255,.22)}
 .entry.planned:not(.done) > .check{border-color:rgba(255,255,255,.18)}
+/* пробник — красная обводка */
+.entry.mock:not(.done){background:rgba(255,59,59,.07);box-shadow:inset 0 0 0 1.5px rgba(255,59,59,.75),0 0 14px -6px rgba(255,59,59,.6)}
+.entry.mock.planned:not(.done){background:rgba(255,59,59,.035);box-shadow:inset 0 0 0 1px rgba(255,59,59,.4)}
+.entry.mock:not(.done) .chip.kind{color:var(--late)}
+.entry.mock:not(.done) .emin{color:#ff8a80}
+.entry.mock .check{border-color:rgba(255,59,59,.7)}
 .chip.plan{color:var(--muted);background:rgba(255,255,255,.07);text-transform:lowercase}
 .check{all:unset;cursor:pointer;width:16px;height:16px;border-radius:5px;border:1.5px solid var(--line-hi);display:grid;place-items:center;color:transparent;font-size:11px}
 .check:hover{background:rgba(255,122,26,.15);color:var(--accent)}
@@ -770,8 +776,11 @@ async function connectAccount() {
 /* ---------- scheduler ---------- */
 // вышло ли видео: на сервере это отмечает администратор, без сервера — по дате
 const released = x => x.released !== undefined ? !!x.released : x.date <= todayISO();
+const MOCK_MIN = 235; // пробник идёт 3 ч 55 мин
+const kindLabel = x => x.kind === "hw" ? "ДЗ" : x.kind === "mock" ? "пробник" : "урок";
 function cost(x) {
   if (x.kind === "hw") return 0; // ДЗ идёт сразу после своего видео и не занимает время плана
+  if (x.kind === "mock") return released(x) ? (x.dur || MOCK_MIN) : 0; // пробник решается целиком, скорость видео не влияет
   return x.dur && released(x) ? Math.max(5, Math.round(x.dur / S.speed)) : 0; // у невышедшего видео длины пока нет
 }
 const progMin = x => (x.prog || []).reduce((a, p) => a + p.min, 0);
@@ -798,7 +807,7 @@ function schedule() {
   const key = x => { const l = x.kind === "hw" && x.dep && byId[x.dep]; return l ? [l.date, num(l), 1, num(x)] : [x.date, num(x), x.kind === "hw" ? 1 : 0, num(x)]; };
   const cmp = (a, b) => { const A = key(a), B = key(b); for (let i = 0; i < 4; i++) { if (A[i] < B[i]) return -1; if (A[i] > B[i]) return 1; } return 0; };
   // видео без длины (ещё не вышло) не стоит в очереди: оно ставится в день своего выхода вместе с ДЗ
-  const noLen = x => x.kind === "lesson" && (!x.dur || !released(x));
+  const noLen = x => (x.kind === "lesson" && (!x.dur || !released(x))) || (x.kind === "mock" && !released(x));
   const floating = x => noLen(x) || (x.kind === "hw" && x.dep && byId[x.dep] && noLen(byId[x.dep]) && pending.has(x.dep));
   const ordered = { math: act.filter(x => subj(x) === "math" && !floating(x)).sort(cmp), inf: act.filter(x => subj(x) === "inf" && !floating(x)).sort(cmp) };
   // следующее в очереди предмета; видео не перескакивают друг через друга
@@ -919,12 +928,12 @@ const byIdAll = () => Object.fromEntries(items.map(x => [x.id, x]));
 function rowHTML(x, o) {
   const partChip = o.part ? `<span class="chip part">${o.part === "last" ? "последняя часть" : "часть " + o.part}</span>` : "";
   const chips = o.done
-    ? `<span class="chip kind">${x.kind === "hw" ? "ДЗ" : "урок"}</span><span class="chip course">${esc(SHORT[x.course] || x.course)}</span>${partChip}`
+    ? `<span class="chip kind">${kindLabel(x)}</span><span class="chip course">${esc(SHORT[x.course] || x.course)}</span>${partChip}`
     : [
-      `<span class="chip kind">${x.kind === "hw" ? "ДЗ" : "урок"}</span>`,
+      `<span class="chip kind">${kindLabel(x)}</span>`,
       `<span class="chip course">${esc(SHORT[x.course] || x.course)}</span>`,
       partChip,
-      !released(x) || (x.kind === "hw" && x.dep && byIdAll()[x.dep] && !released(byIdAll()[x.dep])) ? (x.kind === "lesson" ? `<span class="chip plan">запланировано</span>` : "") : `<span class="chip est">${x.kind === "hw" ? "выдано" : "вышел"} ${fmt(x.date)}</span>`,
+      !released(x) || (x.kind === "hw" && x.dep && byIdAll()[x.dep] && !released(byIdAll()[x.dep])) ? (x.kind !== "hw" ? `<span class="chip plan">запланировано</span>` : "") : `<span class="chip est">${x.kind === "hw" ? "выдано" : "вышел"} ${fmt(x.date)}</span>`,
     ].join("");
   const T = esc(dispTitle(x));
   let btn;
@@ -932,7 +941,7 @@ function rowHTML(x, o) {
   else if (o.done) btn = `<button class="check" data-undo="${x.id}" aria-label="Вернуть «${T}» в план" title="Вернуть в план">✓</button>`;
   else if (o.part && !o.final) btn = `<button class="check" data-prog="${x.id}" data-min="${o.min}" aria-label="Отметить часть «${T}» просмотренной" title="Часть просмотрена">✓</button>`;
   else btn = `<button class="check" data-done="${x.id}" aria-label="Отметить «${T}» выполненным" title="Готово">✓</button>`;
-  const min = x.kind === "lesson" && (!x.dur || !released(x)) ? (!released(x) ? "" : "длина не определена")
+  const min = x.kind === "mock" && !released(x) ? "" : x.kind === "lesson" && (!x.dur || !released(x)) ? (!released(x) ? "" : "длина не определена")
     : o.min ? hm(o.min) + (o.part && !o.done ? `<small>из ${hm(cost(x))}</small>` : !o.done && x.kind === "lesson" && S.speed !== 1 ? `<small>×${S.speed}</small>` : "") : "";
   return `${btn}<div class="etitle"><div class="t" title="${T}">${T}</div><div class="m">${chips}</div></div><div class="emin">${min}</div>`;
 }
@@ -946,7 +955,7 @@ function listHTML(rows, done, removable) {
     const host = r.item.kind === "lesson" && (done ? r.prog == null : !r.part || r.final);
     const subs = host ? rows.map((h, hi) => [h, hi]).filter(([h, hi]) => !used.has(hi) && h.item.kind === "hw" && h.item.dep === r.item.id) : [];
     subs.forEach(([, hi]) => used.add(hi));
-    out.push(`<li class="entry ${r.item.kind} ${subj(r.item)}${done ? " done" : ""}${r.item.kind === "lesson" && !released(r.item) ? " planned" : ""}${subs.length ? " grp" : ""}">${rowHTML(r.item, { ...r, done })}${subs.map(([h]) => `<div class="sub">${rowHTML(h.item, { ...h, done })}</div>`).join("")}${removable && !done ? `<button class="rm" data-rm="${r.item.id}" title="Перенести на следующие дни">убрать из сегодняшнего дня</button>` : ""}</li>`);
+    out.push(`<li class="entry ${r.item.kind} ${subj(r.item)}${done ? " done" : ""}${r.item.kind !== "hw" && !released(r.item) ? " planned" : ""}${subs.length ? " grp" : ""}">${rowHTML(r.item, { ...r, done })}${subs.map(([h]) => `<div class="sub">${rowHTML(h.item, { ...h, done })}</div>`).join("")}${removable && !done ? `<button class="rm" data-rm="${r.item.id}" title="Перенести на следующие дни">убрать из сегодняшнего дня</button>` : ""}</li>`);
   });
   return out.join("");
 }
