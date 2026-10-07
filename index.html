@@ -672,7 +672,10 @@ let isAdmin = false;
 function fromCatalog(rows, prev) {
   const old = Object.fromEntries((prev || []).map(x => [x.id, x]));
   return rows.map(r => {
-    const id = "i" + r.id, p = old[id] || {};
+    const id = "i" + r.id;
+    let p = old[id] || {};
+    // отметка от другого пункта с тем же номером (старые данные) не переносится; пробники раньше не существовали
+    if ((p.k && p.k !== r.kind) || (!p.k && r.kind === "mock")) p = {};
     const x = { id, course: r.course, kind: r.kind, title: r.title || "", date: r.date, dur: r.dur == null ? null : +r.dur, released: !!+r.released, dep: r.dep ? "i" + r.dep : null, deadline: r.deadline || null, done: !!p.done };
     if (p.done) x.doneDate = p.doneDate ?? "";
     if (p.prog) x.prog = p.prog;
@@ -681,7 +684,7 @@ function fromCatalog(rows, prev) {
 }
 function personalState() {
   const st = {};
-  items.forEach(x => { if (x.done || x.prog) st[x.id] = { done: !!x.done, doneDate: x.doneDate, prog: x.prog }; });
+  items.forEach(x => { if (x.done || x.prog) st[x.id] = { k: x.kind, done: !!x.done, doneDate: x.doneDate, prog: x.prog }; });
   return st;
 }
 async function serverLogin(login) {
@@ -796,7 +799,11 @@ function schedule() {
   const t = todayISO();
   const start = S.start && S.start > t ? S.start : t;
   const off = new Set(S.off);
-  const act = items.filter(x => !x.done && (S.incHW || x.kind !== "hw"));
+  const actAll = items.filter(x => !x.done && (S.incHW || x.kind !== "hw"));
+  // невышедшее видео или пробник, чья дата уже прошла, ждёт выхода и в план не ставится (вместе со своим ДЗ)
+  const waiting = x => x.kind !== "hw" && !released(x) && x.date < start;
+  const byIdW = Object.fromEntries(items.map(x => [x.id, x]));
+  const act = actAll.filter(x => !waiting(x) && !(x.kind === "hw" && x.dep && byIdW[x.dep] && !byIdW[x.dep].done && waiting(byIdW[x.dep])));
   const byId = Object.fromEntries(items.map(x => [x.id, x]));
   const num = x => +x.id.slice(1) || 0;
   const pending = new Set(act.map(x => x.id));
@@ -839,7 +846,9 @@ function schedule() {
     const cap = off.has(d) ? 0 : S.week[dow(d)];
     let free = d === t ? Math.max(0, cap - doneToday) : cap;
     const entries = [];
-    act.filter(x => noLen(x) && pending.has(x.id) && (x.date === d || (x.date < start && d === start))).forEach(x => place(entries, x));
+    const removedToday = d === t && lock && lock.removed ? new Set(lock.removed) : null;
+    // без длины (не вышло или длина не указана): в день своей даты, а если убрано из сегодня — на следующий
+    act.filter(x => noLen(x) && pending.has(x.id) && x.date <= d && !(removedToday && removedToday.has(x.id))).forEach(x => place(entries, x));
     if (d === t && lock) {
       lock.items.forEach(li => {
         const x = byId[li.id]; if (!x || !pending.has(x.id)) return;
@@ -1074,6 +1083,7 @@ $("view-plan").addEventListener("click", e => {
   if (rm && S.lock) {
     const ids = new Set([rm.dataset.rm, ...items.filter(h => h.kind === "hw" && h.dep === rm.dataset.rm).map(h => h.id)]);
     S.lock.items = S.lock.items.filter(li => !ids.has(li.id));
+    S.lock.removed = [...new Set([...(S.lock.removed || []), ...ids])]; // убранное не возвращается в сегодняшний день
     save(); recompute(); return;
   }
   const q = e.target.closest("[data-ask]");
