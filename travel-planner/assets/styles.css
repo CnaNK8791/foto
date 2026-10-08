@@ -1,0 +1,1202 @@
+:root {
+  color-scheme: dark;
+
+  --page-bg: #000000;
+  --card-bg: #0a0c0a;
+  --panel-elev: rgba(20, 24, 18, .72);
+  --panel-elev-hover: rgba(26, 31, 22, .85);
+  --border: rgba(255, 255, 255, .10);
+  --border-strong: rgba(255, 255, 255, .18);
+  --text: #f4f6f2;
+  --text-dim: #c3c9bd;
+  --text-faint: #8a9184;
+
+  --accent: #f3b6c9;
+  --accent-2: #e592ac;
+  --accent-soft: rgba(243, 182, 201, .18);
+  --accent-ring: rgba(243, 182, 201, .4);
+  --accent-ink: #3a0f1c;
+
+  --danger: #e0776a;
+  --danger-soft: rgba(224, 119, 106, .14);
+
+  --sakura: #f3b6c9;
+
+  /* Corners stay small and mostly uniform on purpose — square-ish
+     everywhere, rounded only where a shape needs to read as a switch,
+     a dot, or a person/logo bubble (those keep border-radius: 50%). */
+  --radius: 10px;
+  --radius-sm: 6px;
+  --radius-xs: 4px;
+
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+
+body {
+  margin: 0;
+  background: var(--page-bg);
+  color: var(--text);
+}
+
+::selection { background: var(--accent-soft); color: var(--text); }
+
+.sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* =========================================================
+   Auth / entry screen
+   ========================================================= */
+.auth-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 24px;
+}
+
+/* The photo fills the whole card; a dark-grey ambient shadow wraps
+   most of the edge, with a soft sakura-pink bloom pushed toward the
+   top-right corner, where the pagoda and cherry blossoms sit in the
+   photo — as if that part of the image is the light source. */
+.auth-card {
+  position: relative;
+  width: 100%;
+  max-width: 1040px;
+  min-height: 620px;
+  border-radius: var(--radius);
+  overflow: hidden;
+  background-color: var(--card-bg);
+  background-image: url("photos/hero.png");
+  background-size: cover;
+  background-position: right center;
+  box-shadow:
+    0 30px 90px rgba(0, 0, 0, .55),
+    0 10px 28px rgba(0, 0, 0, .5),
+    70px -60px 150px 20px rgba(243, 182, 201, .30);
+}
+
+/* Dark legibility gradient over the photo — strong on the left where
+   the form sits, clearing up toward the right where the pagoda is. */
+.auth-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, #000 0%, rgba(0,0,0,.86) 32%, rgba(0,0,0,.5) 52%, rgba(0,0,0,.12) 78%, rgba(0,0,0,0) 100%);
+  pointer-events: none;
+}
+
+.auth-panel {
+  position: relative;
+  z-index: 1;
+  min-height: 620px;
+  padding: 40px 48px 44px;
+  display: flex;
+  flex-direction: column;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 64px;
+}
+.brand-mark { display: inline-flex; filter: drop-shadow(0 3px 10px rgba(243, 182, 201, .4)); }
+.brand-name {
+  font-weight: 700;
+  font-size: 17px;
+  color: var(--text);
+  letter-spacing: -.2px;
+}
+.brand-accent { color: var(--accent); }
+
+.auth-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  max-width: 380px;
+}
+
+.auth-step { animation: step-in .18s ease; }
+@keyframes step-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+.step-meta {
+  font-size: 12.5px;
+  color: var(--text-dim);
+  margin: 0 0 14px;
+}
+.step-meta strong { color: var(--text); font-weight: 600; }
+
+.auth-title {
+  font-size: 36px;
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -.5px;
+  color: var(--text);
+  margin: 0 0 12px;
+  text-shadow: 0 2px 20px rgba(0, 0, 0, .5);
+}
+.dot-accent { color: var(--accent); }
+
+.auth-text {
+  font-size: 14.5px;
+  line-height: 1.5;
+  color: var(--text-dim);
+  margin: 0 0 28px;
+}
+
+/* Form */
+.auth-form { display: flex; flex-direction: column; gap: 8px; }
+
+.field-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  background: var(--panel-elev);
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 5px 5px 5px 20px;
+  transition: border-color .15s, box-shadow .15s, background .15s;
+}
+.field-row:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-ring);
+  background: var(--panel-elev-hover);
+}
+
+.field-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+  padding: 12px 8px 12px 0;
+}
+.field-input::placeholder { color: var(--text-faint); }
+.field-input:focus { outline: none; }
+
+.field-submit {
+  flex-shrink: 0;
+  width: 42px;
+  height: 42px;
+  border-radius: var(--radius-xs);
+  border: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent-ink);
+  background: linear-gradient(180deg, var(--accent), var(--accent-2));
+  box-shadow: 0 4px 14px rgba(243, 182, 201, .45);
+  transition: filter .15s, transform .05s;
+}
+.field-submit:hover { filter: brightness(1.08); }
+.field-submit:active { transform: scale(.94); }
+
+.field-eye {
+  flex-shrink: 0;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-xs);
+  border: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+  background: transparent;
+  transition: color .15s, background .15s;
+}
+.field-eye:hover { color: var(--text); background: rgba(255,255,255,.06); }
+.field-eye.is-visible { color: var(--accent); }
+
+.field-error {
+  color: var(--danger);
+  font-size: 12.5px;
+  margin: 2px 0 0 4px;
+}
+
+.btn-submit {
+  margin-top: 6px;
+  align-self: flex-start;
+  border: none;
+  border-radius: var(--radius-xs);
+  padding: 13px 28px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--accent-ink);
+  background: linear-gradient(180deg, var(--accent), var(--accent-2));
+  box-shadow: 0 4px 14px rgba(243, 182, 201, .45);
+  cursor: pointer;
+  transition: filter .15s, transform .05s;
+}
+.btn-submit:hover { filter: brightness(1.08); }
+.btn-submit:active { transform: scale(.98); }
+
+/* Success state */
+.success-icon {
+  width: 44px; height: 44px;
+  border-radius: var(--radius-xs);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 20px;
+  font-weight: 800;
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 18px;
+}
+.success-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0 0 8px;
+}
+.success-text {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-dim);
+  margin: 0 0 20px;
+}
+.success-text strong { color: var(--text); font-weight: 600; }
+
+.link-btn {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+}
+.link-btn:hover { color: var(--accent-2); text-decoration: underline; }
+
+.success-actions {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 640px) {
+  .auth-card { min-height: 0; }
+  .auth-panel { min-height: 560px; padding: 32px 26px 40px; }
+  .brand { margin-bottom: 40px; }
+  .auth-title { font-size: 30px; }
+  .auth-card::before {
+    background: linear-gradient(180deg, #000 0%, rgba(0,0,0,.88) 35%, rgba(0,0,0,.55) 60%, rgba(0,0,0,.15) 85%, rgba(0,0,0,0) 100%);
+  }
+}
+
+@media (max-width: 460px) {
+  .auth-page { padding: 0; }
+  .auth-card { border-radius: 0; }
+  .auth-panel { min-height: 100vh; }
+}
+
+/* =========================================================
+   Workspace / dashboard (post-login) — no header, full-bleed,
+   app-like. Only the sakura accent color is used throughout.
+   ========================================================= */
+.workspace {
+  position: relative;
+  height: 100vh;
+  height: 100dvh;
+  padding: 14px;
+  overflow: hidden;
+  background:
+    radial-gradient(900px 560px at 88% -8%, var(--accent-soft), transparent 60%),
+    radial-gradient(700px 460px at -6% 106%, rgba(243, 182, 201, .08), transparent 55%),
+    var(--page-bg);
+}
+
+.fab-wrap { position: relative; }
+
+.fab-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: rgba(10, 12, 10, .55);
+  backdrop-filter: blur(10px);
+  color: var(--text-dim);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color .15s, border-color .15s, box-shadow .15s;
+}
+.fab-btn:hover { color: var(--accent); border-color: var(--accent-ring); box-shadow: 0 0 0 4px var(--accent-soft); }
+.fab-btn[aria-expanded="true"] { color: var(--accent); border-color: var(--accent); }
+
+.fab-avatar {
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  background: linear-gradient(160deg, #fde3ea, var(--accent) 60%, var(--accent-2));
+  color: var(--accent-ink);
+  font-size: 12px;
+  font-weight: 800;
+  display: flex; align-items: center; justify-content: center;
+}
+
+.fab-menu {
+  position: absolute;
+  top: 48px;
+  right: 0;
+  min-width: 210px;
+  background: rgba(10, 12, 10, .92);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 8px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, .5);
+  animation: fab-in .12s ease;
+}
+@keyframes fab-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+
+/* In the taskbar (bottom of the screen) the menu opens upward instead. */
+.fab-menu-up { top: auto; bottom: 48px; }
+@keyframes fab-in-up { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.fab-menu-up { animation-name: fab-in-up; }
+
+.fab-menu-email {
+  font-size: 12px;
+  color: var(--text-dim);
+  padding: 6px 10px 8px;
+  margin: 0 0 4px;
+  border-bottom: 1px solid var(--border);
+  word-break: break-all;
+}
+
+.fab-menu-item, .fab-menu-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  padding: 9px 10px;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.fab-menu-item:hover, .fab-menu-toggle:hover { background: var(--panel-elev-hover); }
+#profileLogoutBtn { color: var(--danger); }
+
+.toggle-pill {
+  width: 34px; height: 20px;
+  border-radius: 999px;
+  background: var(--panel-elev);
+  border: 1px solid var(--border-strong);
+  position: relative;
+  flex-shrink: 0;
+  transition: background .15s, border-color .15s;
+}
+.toggle-knob {
+  position: absolute;
+  top: 2px; left: 2px;
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  transition: transform .15s, background .15s;
+}
+.toggle-pill.is-on {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+.toggle-pill.is-on .toggle-knob {
+  transform: translateX(14px);
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent);
+}
+
+/* ============================================================
+   Авиабилеты window — a search view and a results view (like the
+   attached reference: big route codes with a dashed flight-path
+   between them, white ticket cards on the dark window background).
+   ============================================================ */
+.tickets-view { height: 100%; display: flex; flex-direction: column; padding: 20px; overflow-y: auto; }
+.tickets-view[hidden] { display: none; }
+
+.flights-form { display: flex; flex-direction: column; gap: 12px; flex-shrink: 0; }
+
+/* Trip-type radios + direct-only checkbox, same row */
+.flights-options-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.flights-trip-type { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.flights-radio, .flights-checkbox {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12.5px; color: var(--text-faint);
+  cursor: pointer; user-select: none;
+}
+.flights-radio input, .flights-checkbox input { accent-color: var(--accent); width: 15px; height: 15px; cursor: pointer; margin: 0; }
+.flights-radio:has(input:checked) span, .flights-checkbox:has(input:checked) span { color: var(--text); font-weight: 600; }
+.flights-note {
+  font-size: 11.5px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: var(--radius-xs);
+  padding: 9px 12px;
+  margin: 0;
+}
+
+.flights-row { display: flex; gap: 10px; align-items: stretch; flex-wrap: wrap; }
+.flights-row .flights-field-pair { flex: 1 1 260px; min-width: 0; }
+.flights-row .flights-field-date { flex: 0 0 190px; }
+.flights-date-btn { white-space: nowrap; }
+
+/* Each field is its own card — icon in a soft sakura tile, small label
+   above a bold value — not just a bare <select> dropped on the window. */
+.flights-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  border: 1px solid var(--border);
+  background: var(--panel-elev);
+  border-radius: var(--radius-sm);
+  padding: 9px 14px;
+  transition: border-color .15s, background .15s;
+}
+.flights-field:focus-within { border-color: var(--accent); background: var(--panel-elev-hover); box-shadow: 0 0 0 3px var(--accent-soft); }
+.flights-field.has-error { border-color: var(--danger); box-shadow: 0 0 0 3px var(--danger-soft); }
+
+.flights-field-pair { display: flex; align-items: center; gap: 8px; }
+.flights-field-pair .flights-field { flex: 1; min-width: 0; }
+.flights-swap-btn {
+  flex-shrink: 0;
+  width: 26px; height: 26px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border-strong);
+  background: var(--card-bg);
+  color: var(--accent);
+  cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: background .15s;
+}
+.flights-swap-btn:hover { background: var(--accent-soft); }
+.flights-swap-btn:active svg { transform: rotate(180deg); }
+.flights-swap-btn svg { transition: transform .25s; }
+
+.flights-field-icon {
+  width: 30px; height: 30px;
+  border-radius: var(--radius-xs);
+  background: var(--accent-soft);
+  color: var(--accent);
+  flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.flights-field-icon::before { content: ""; display: block; width: 15px; height: 15px; background: currentColor; }
+.flights-field-icon-from::before { mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M2.5 19.5 21 12 2.5 4.5 5 11l9 1-9 1z"/></svg>') center/contain no-repeat; -webkit-mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M2.5 19.5 21 12 2.5 4.5 5 11l9 1-9 1z"/></svg>') center/contain no-repeat; }
+.flights-field-icon-to::before { mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7Zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5Z"/></svg>') center/contain no-repeat; -webkit-mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7Zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5Z"/></svg>') center/contain no-repeat; }
+.flights-field-icon-date::before { mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"><path d="M7 2v3M17 2v3M3.5 9h17M5 5h14a1.5 1.5 0 0 1 1.5 1.5v13A1.5 1.5 0 0 1 19 21H5a1.5 1.5 0 0 1-1.5-1.5v-13A1.5 1.5 0 0 1 5 5Z" stroke="black" stroke-width="1.6"/></svg>') center/contain no-repeat; -webkit-mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"><path d="M7 2v3M17 2v3M3.5 9h17M5 5h14a1.5 1.5 0 0 1 1.5 1.5v13A1.5 1.5 0 0 1 19 21H5a1.5 1.5 0 0 1-1.5-1.5v-13A1.5 1.5 0 0 1 5 5Z" stroke="black" stroke-width="1.6"/></svg>') center/contain no-repeat; }
+.flights-field-icon-pax::before { mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 12a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9Zm0 2c-4 0-8 2-8 5v2h16v-2c0-3-4-5-8-5Z"/></svg>') center/contain no-repeat; -webkit-mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 12a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9Zm0 2c-4 0-8 2-8 5v2h16v-2c0-3-4-5-8-5Z"/></svg>') center/contain no-repeat; }
+
+.flights-field-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.flights-field-label { font-size: 10.5px; font-weight: 600; color: var(--text-faint); }
+.flights-field-hint { font-size: 10.5px; color: var(--text-faint); opacity: .8; }
+.flights-select {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 0;
+  appearance: none;
+}
+.flights-select:focus { outline: none; }
+.flights-select::placeholder { color: var(--text-faint); font-weight: 500; }
+
+/* Our own date field + calendar popover — no native browser date input
+   (and its unstyleable, inconsistent picker) anywhere in this form. */
+.flights-field-date { position: relative; }
+.flights-date-btn {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  padding: 0;
+  cursor: pointer;
+}
+.flights-date-btn:focus { outline: none; }
+
+.flights-calendar {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 15;
+  width: 250px;
+  background: var(--card-bg);
+  border: 1px solid var(--border-strong);
+  padding: 12px;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, .45);
+}
+.flights-calendar-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.flights-calendar-month { font-size: 12px; font-weight: 700; color: var(--text); text-transform: capitalize; }
+.flights-calendar-nav {
+  width: 22px; height: 22px;
+  border: 1px solid var(--border-strong);
+  background: var(--panel-elev);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.flights-calendar-nav:hover:not(:disabled) { background: var(--panel-elev-hover); }
+.flights-calendar-nav:disabled { opacity: .35; cursor: default; }
+.flights-calendar-weekdays, .flights-calendar-days { display: grid; grid-template-columns: repeat(7, 1fr); }
+.flights-calendar-weekdays span { font-size: 9px; font-weight: 700; color: var(--text-faint); text-align: center; padding-bottom: 6px; }
+.flights-calendar-day {
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 11.5px;
+  padding: 6px 0;
+  cursor: pointer;
+  text-align: center;
+}
+.flights-calendar-day:hover:not(:disabled) { background: var(--panel-elev-hover); }
+.flights-calendar-day:disabled { color: var(--text-faint); opacity: .35; cursor: default; }
+.flights-calendar-day.is-outside { color: var(--text-faint); opacity: .55; }
+.flights-calendar-day.is-today:not(.is-selected) { box-shadow: inset 0 0 0 1px var(--accent-ring); }
+.flights-calendar-day.is-selected { background: var(--accent); color: var(--accent-ink); font-weight: 700; }
+
+/* City suggestion panel — replaces the native <datalist> arrow/list. */
+.flights-city-suggest {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0; right: 0;
+  z-index: 12;
+  background: var(--card-bg);
+  border: 1px solid var(--border-strong);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, .45);
+  max-height: 224px;
+  overflow-y: auto;
+}
+.flights-city-suggest-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 9px 14px;
+  cursor: pointer;
+  text-align: left;
+}
+.flights-city-suggest-item:hover, .flights-city-suggest-item.is-active { background: var(--panel-elev-hover); }
+.flights-city-suggest-code { font-size: 10.5px; font-weight: 700; color: var(--text-faint); }
+
+/* Passenger/class summary button + popover — opens upward, same idea
+   as the taskbar tray menus. */
+.flights-pax-wrap { position: relative; flex: 1 1 260px; min-width: 0; }
+.flights-pax-btn {
+  width: 100%;
+  display: flex; align-items: center; gap: 10px;
+  border: 1px solid var(--border);
+  background: var(--panel-elev);
+  border-radius: var(--radius-sm);
+  padding: 9px 14px;
+  color: var(--text);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+.flights-pax-btn:hover, .flights-pax-btn[aria-expanded="true"] { border-color: var(--accent); background: var(--panel-elev-hover); }
+.flights-pax-btn span:nth-child(2) { flex: 1; text-align: left; }
+.flights-pax-chevron { color: var(--text-faint); flex-shrink: 0; transition: transform .15s; }
+.flights-pax-btn[aria-expanded="true"] .flights-pax-chevron { transform: rotate(180deg); }
+
+.flights-pax-panel {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0; right: 0;
+  background: var(--card-bg);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, .4);
+  z-index: 5;
+}
+.flights-pax-row { display: flex; align-items: center; justify-content: space-between; font-size: 12.5px; color: var(--text-faint); }
+.flights-pax-stepper { display: flex; align-items: center; gap: 10px; }
+.flights-pax-stepper button {
+  width: 26px; height: 26px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border-strong);
+  background: var(--panel-elev);
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.flights-pax-stepper button:disabled { opacity: .4; cursor: default; }
+.flights-pax-stepper span { min-width: 16px; text-align: center; font-weight: 700; color: var(--text); }
+.flights-pax-class { display: flex; gap: 6px; }
+.flights-pax-class-btn {
+  border: 1px solid var(--border-strong);
+  background: var(--panel-elev);
+  color: var(--text-faint);
+  font: inherit; font-size: 11.5px; font-weight: 600;
+  border-radius: var(--radius-xs);
+  padding: 5px 12px;
+  cursor: pointer;
+}
+.flights-pax-class-btn.is-active { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+
+.flights-row-bottom { align-items: center; }
+.flights-search-btn {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.flights-search-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+.flights-selected { flex-shrink: 0; border-top: 1px solid var(--border); padding-top: 12px; margin-top: 16px; }
+.flights-selected-title { font-size: 11.5px; font-weight: 600; color: var(--text-faint); margin: 0 0 8px; }
+.flights-selected-list { display: flex; flex-direction: column; gap: 6px; }
+.flights-selected-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: var(--panel-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 7px 8px 7px 12px;
+  font-size: 12.5px;
+  color: var(--text);
+}
+.flights-selected-remove {
+  flex-shrink: 0;
+  width: 22px; height: 22px;
+  border-radius: var(--radius-xs);
+  border: none;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.flights-selected-remove:hover { color: var(--danger); background: var(--danger-soft); }
+
+/* The route line + plane dot drawn on the map for each selected flight */
+.flight-map-plane {
+  color: var(--accent);
+  filter: drop-shadow(0 0 4px rgba(0, 0, 0, .8));
+}
+
+/* Results view */
+.tickets-results-head { display: flex; align-items: center; gap: 10px; flex-shrink: 0; margin-bottom: 14px; }
+.tickets-back-btn {
+  width: 30px; height: 30px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border-strong);
+  background: var(--panel-elev);
+  color: var(--text);
+  cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  transition: background .15s;
+}
+.tickets-back-btn:hover { background: var(--panel-elev-hover); }
+.tickets-results-title { flex: 1; text-align: center; font-size: 15px; font-weight: 700; color: var(--text); margin: 0; }
+.tickets-results-spacer { width: 30px; flex-shrink: 0; }
+
+.tickets-route-card {
+  flex-shrink: 0;
+  background: linear-gradient(165deg, var(--panel-elev), var(--card-bg));
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 18px 14px;
+  margin-bottom: 16px;
+}
+.tickets-route-summary {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+.tickets-route-endpoint { display: flex; flex-direction: column; gap: 2px; }
+.tickets-route-endpoint.right { align-items: flex-end; text-align: right; }
+.tickets-route-code { font-size: 24px; font-weight: 800; color: var(--text); letter-spacing: .01em; }
+.tickets-route-city { font-size: 11px; color: var(--text-faint); }
+.tickets-route-path { flex: 1; display: flex; align-items: center; justify-content: center; padding-top: 12px; color: var(--accent); }
+.tickets-route-path .route-dash { flex: 1; height: 1px; background: var(--border-strong); max-width: 40px; }
+.tickets-route-path svg { flex-shrink: 0; margin: 0 4px; }
+.tickets-route-date { font-size: 11.5px; color: var(--text-faint); text-align: center; flex-shrink: 0; margin: 10px 0 0; padding-top: 10px; border-top: 1px dashed var(--border); }
+
+.tickets-leg-label { font-size: 12px; font-weight: 700; color: var(--text-faint); text-transform: uppercase; letter-spacing: .04em; margin: 4px 2px 8px; }
+
+.tickets-cards { display: flex; flex-direction: column; gap: 14px; flex: 1; min-height: 0; }
+.flights-empty, .flights-error { font-size: 12.5px; color: var(--text-faint); text-align: center; padding: 18px 8px; }
+
+/* Light card on the dark window — the look asked for, kept close to
+   the reference rather than forced into the app's own dark palette. */
+.ticket-card {
+  position: relative;
+  background: #fff;
+  color: #15161a;
+  border-radius: var(--radius-sm);
+  padding: 15px 17px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, .3);
+  border: 1px solid rgba(255, 255, 255, .06);
+  flex-shrink: 0;
+  transition: transform .15s ease, box-shadow .15s ease;
+}
+.ticket-card:hover { transform: translateY(-2px); box-shadow: 0 14px 30px rgba(0, 0, 0, .38); }
+.ticket-card.is-best { box-shadow: 0 10px 24px rgba(0, 0, 0, .3), 0 0 0 2px var(--accent); }
+
+/* Badges sit as a strip flush with the card's own top edge — not
+   floating pills overlapping whatever is above them. */
+.ticket-badges {
+  display: flex;
+  gap: 1px;
+  margin: -15px -17px 11px;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  overflow: hidden;
+}
+.ticket-badge {
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: .02em;
+  color: var(--accent-ink);
+  background: var(--accent);
+  padding: 5px 12px;
+}
+.ticket-badge-outline { color: #55575e; background: #f3f3f5; }
+
+/* Three stacked rows: airline+price header, then the route line, then
+   amenities+button — plain and legible rather than a dense single line. */
+.ticket-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+
+.ticket-airline-col { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.ticket-airline-logo {
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+}
+.ticket-airline-info { min-width: 0; }
+.ticket-airline-name { font-size: 12.5px; font-weight: 700; line-height: 1.25; }
+.ticket-airline-sub { font-size: 10px; color: #9a9ca3; margin-top: 1px; }
+
+.ticket-price { flex-shrink: 0; font-size: 19px; font-weight: 800; color: #15161a; letter-spacing: -.01em; text-align: right; white-space: nowrap; }
+.ticket-price span { font-size: 10px; font-weight: 600; color: #9a9ca3; }
+
+.ticket-route { display: flex; align-items: center; gap: 10px; }
+.ticket-time-block { display: flex; flex-direction: column; gap: 2px; flex-shrink: 0; }
+.ticket-time-block.right { align-items: flex-end; text-align: right; }
+.ticket-time { font-size: 20px; font-weight: 800; color: #15161a; letter-spacing: -.01em; }
+.ticket-code { font-size: 10.5px; color: #9a9ca3; font-weight: 600; }
+.ticket-path-block { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 64px; }
+.ticket-duration { font-size: 10px; color: #9a9ca3; font-weight: 600; }
+.ticket-path-line { width: 100%; height: 1px; background: #d8d8dc; }
+.ticket-path-line-wrap { width: 100%; display: flex; align-items: center; }
+.ticket-path-line-wrap .ticket-path-line { width: auto; flex: 1; }
+.ticket-path-dot { width: 5px; height: 5px; border-radius: 50%; background: #9a9ca3; flex-shrink: 0; margin: 0 3px; }
+.ticket-stops { font-size: 10.5px; color: #55575e; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.ticket-day-offset { position: relative; top: -5px; font-size: 9.5px; font-weight: 800; color: var(--accent-2); margin-left: 1px; }
+
+.ticket-bottom { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.ticket-amenities { display: flex; gap: 6px; color: #b7b9c0; }
+.ticket-amenities svg { width: 14px; height: 14px; display: block; }
+
+.ticket-add-btn {
+  flex-shrink: 0;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: var(--radius-xs);
+  padding: 7px 8px 7px 14px;
+  cursor: pointer;
+  display: inline-flex; align-items: center; gap: 4px;
+  white-space: nowrap;
+  transition: filter .15s, background .15s, color .15s;
+}
+.ticket-add-btn:hover { filter: brightness(1.08); }
+.ticket-add-btn.is-added { background: transparent; border-color: #d8d8dc; color: #9a9ca3; }
+
+/* ============================================================
+   Desktop / windows — every app is its own floating, draggable,
+   resizable window with a titlebar (minimize/close), like a small
+   desktop OS. The taskbar at the bottom lists every app; clicking its
+   icon opens/restores/minimizes the matching window. */
+.desktop {
+  position: absolute;
+  inset: 0 0 56px 0; /* leave room for the taskbar */
+  overflow: hidden;
+}
+
+.app-window {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 0; /* apps are square, full stop */
+  overflow: hidden;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, .5);
+  min-width: 260px;
+  min-height: 180px;
+}
+.app-window.is-minimized { display: none; }
+.app-window.is-front { box-shadow: 0 22px 60px rgba(0, 0, 0, .6), 0 0 0 1px var(--accent-ring); }
+
+.window-titlebar {
+  flex-shrink: 0;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px 0 12px;
+  background: var(--panel-elev);
+  border-bottom: 1px solid var(--border);
+  cursor: grab;
+  user-select: none;
+}
+.window-titlebar:active { cursor: grabbing; }
+.window-title { font-size: 12.5px; font-weight: 600; color: var(--text-dim); flex: 1; }
+
+.window-controls { display: flex; align-items: center; gap: 5px; flex-shrink: 0; }
+/* Minimize and close are drawn with the exact same technique now (same
+   viewBox, same glyph span, same stroke-width) so they are guaranteed to
+   read as one matched pair — no more a bold dash next to a tiny X. */
+.window-btn {
+  width: 24px; height: 24px;
+  border-radius: var(--radius-xs);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: background .12s, border-color .12s, color .12s;
+}
+.window-btn svg { display: block; }
+.window-btn:hover { background: var(--panel-elev-hover); border-color: var(--border-strong); color: var(--text); }
+.window-btn-close:hover { background: var(--danger-soft); border-color: transparent; color: var(--danger); }
+
+/* Pin — draws as a tilted, "not stuck in yet" tack; straightens up and
+   turns accent-colored once pinned (window then stays above everything
+   else no matter what else gets focused). */
+.window-btn-pin svg { transition: transform .15s ease; transform: rotate(-35deg); }
+.window-btn-pin.is-active { color: var(--accent); }
+.window-btn-pin.is-active svg { transform: rotate(0deg); }
+
+/* Small monoline icons, reused in window titlebars + the taskbar */
+.window-icon { width: 15px; height: 15px; flex-shrink: 0; display: inline-block; color: var(--accent); }
+.window-icon-map { -webkit-mask: none; }
+.window-icon::before { content: ""; display: block; width: 100%; height: 100%; background: currentColor; }
+.window-icon-map::before { mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9 2 3 4.5v17L9 19l6 2.5L21 19V2l-6 2.5L9 2Zm0 2.2 6 2.5v14.1l-6-2.5V4.2Z"/></svg>') center/contain no-repeat; -webkit-mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9 2 3 4.5v17L9 19l6 2.5L21 19V2l-6 2.5L9 2Zm0 2.2 6 2.5v14.1l-6-2.5V4.2Z"/></svg>') center/contain no-repeat; }
+.window-icon-chat::before { mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 4h16v11H8l-4 4V4Z"/></svg>') center/contain no-repeat; -webkit-mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 4h16v11H8l-4 4V4Z"/></svg>') center/contain no-repeat; }
+.window-icon-route::before { mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M5 3a3 3 0 1 0 0 6 3 3 0 0 0 0-6Zm14 12a3 3 0 1 0 0 6 3 3 0 0 0 0-6ZM6.7 8.3c1 3.5 3.3 6.4 6.6 8L17 19l-1.6-3.4c-2-.8-3.6-2.4-4.4-4.4L9.6 8Z"/></svg>') center/contain no-repeat; -webkit-mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M5 3a3 3 0 1 0 0 6 3 3 0 0 0 0-6Zm14 12a3 3 0 1 0 0 6 3 3 0 0 0 0-6ZM6.7 8.3c1 3.5 3.3 6.4 6.6 8L17 19l-1.6-3.4c-2-.8-3.6-2.4-4.4-4.4L9.6 8Z"/></svg>') center/contain no-repeat; }
+.window-icon-flights::before { mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21,15.5V13.5L13,8.5V3.5C13,2.67 12.33,2 11.5,2C10.67,2 10,2.67 10,3.5V8.5L2,13.5V15.5L10,13V18.5L7.5,20V21.5L11.5,20.5L15.5,21.5V20L13,18.5V13L21,15.5Z"/></svg>') center/contain no-repeat; -webkit-mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21,15.5V13.5L13,8.5V3.5C13,2.67 12.33,2 11.5,2C10.67,2 10,2.67 10,3.5V8.5L2,13.5V15.5L10,13V18.5L7.5,20V21.5L11.5,20.5L15.5,21.5V20L13,18.5V13L21,15.5Z"/></svg>') center/contain no-repeat; }
+
+.window-body {
+  flex: 1;
+  min-height: 0;
+  padding: 16px;
+  overflow-y: auto;
+}
+.window-body-flush { padding: 0; overflow: hidden; }
+
+.window-resize {
+  position: absolute;
+  right: 0; bottom: 0;
+  width: 16px; height: 16px;
+  cursor: nwse-resize;
+}
+.window-resize::before {
+  content: "";
+  position: absolute;
+  right: 4px; bottom: 4px;
+  width: 8px; height: 8px;
+  border-right: 2px solid var(--border-strong);
+  border-bottom: 2px solid var(--border-strong);
+}
+
+/* Taskbar */
+.taskbar {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  height: 56px;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 14px;
+  background: rgba(10, 12, 10, .82);
+  backdrop-filter: blur(14px);
+  border-top: 1px solid var(--border-strong);
+}
+.taskbar-apps { display: flex; align-items: center; gap: 6px; }
+.taskbar-app {
+  width: 40px; height: 40px;
+  border-radius: 0; /* mirrors the square app windows they represent */
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  position: relative;
+  transition: background .12s, border-color .12s;
+}
+.taskbar-app:hover { background: var(--panel-elev-hover); }
+.taskbar-app .window-icon { width: 18px; height: 18px; color: var(--text-dim); transition: color .12s; }
+.taskbar-app.is-open .window-icon { color: var(--accent); }
+.taskbar-app.is-open::after {
+  content: "";
+  position: absolute;
+  bottom: 3px; left: 50%;
+  transform: translateX(-50%);
+  width: 4px; height: 4px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.taskbar-app.is-focused { background: var(--panel-elev); border-color: var(--border-strong); }
+.taskbar-tray { display: flex; align-items: center; gap: 10px; }
+
+#mapContainer { width: 100%; height: 100%; background: #000; }
+.leaflet-container { background: #000; font-family: "Inter", sans-serif; }
+.leaflet-control-attribution {
+  background: rgba(10,12,10,.8) !important;
+  color: var(--text-faint) !important;
+  font-size: 10px !important;
+}
+.leaflet-control-attribution a { color: var(--text-dim) !important; }
+.leaflet-control-zoom a {
+  background: var(--card-bg) !important;
+  color: var(--accent) !important;
+  border-color: var(--border) !important;
+}
+.leaflet-interactive { cursor: pointer; transition: fill-opacity .12s, stroke .12s; }
+.leaflet-interactive:focus { outline: none; }
+
+.map-tooltip.leaflet-tooltip {
+  background: rgba(10, 12, 10, .92);
+  color: var(--text);
+  border: 1px solid var(--accent-ring);
+  border-radius: var(--radius-xs);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 10px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .4);
+}
+.map-tooltip.leaflet-tooltip::before { display: none; }
+
+/* City markers — a small dot (capitals get a ring around theirs) with
+   the name in white beside it, right on the map (no background pill —
+   legibility comes from a heavy stroke + shadow instead). Lower tiers
+   only join the map once zoomed in, and any label that would collide
+   with an already-placed one is skipped for that frame (see app.js). */
+.city-marker {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  transform: translate(-3px, -50%);
+  pointer-events: none;
+}
+.city-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 0 1.5px rgba(0, 0, 0, .8);
+  flex-shrink: 0;
+}
+.city-dot-capital {
+  width: 4px;
+  height: 4px;
+  background: #fff;
+  box-shadow: 0 0 0 1.5px rgba(0, 0, 0, .8), 0 0 0 3.5px #fff, 0 0 0 5px rgba(0, 0, 0, .8);
+}
+.city-name {
+  display: inline-block;
+  color: #fff;
+  font-weight: 700;
+  white-space: nowrap;
+  -webkit-text-stroke: 1.3px rgba(0, 0, 0, .95);
+  paint-order: stroke fill;
+  text-shadow: 0 0 3px #000, 0 0 6px #000, 0 1px 2px #000;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.city-name-capital { font-weight: 800; -webkit-text-stroke-width: 1.6px; }
+.city-name-t1 { font-size: 14px; }
+.city-name-t2 { font-size: 12.5px; }
+.city-name-t3 { font-size: 11.5px; }
+.city-name-t4 { font-size: 10.5px; }
+
+/* Airports — their own marker at the airport's real location (like a
+   metro line, only shown once you're zoomed in close to a city): a
+   sakura plane icon with the IATA code beside it. */
+.airport-marker {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  transform: translate(-3px, -50%);
+  pointer-events: none;
+  color: var(--accent);
+}
+.transport-icon { width: 12px; height: 12px; flex-shrink: 0; display: block; }
+.airport-code {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .02em;
+  color: var(--accent);
+  -webkit-text-stroke: .9px rgba(0, 0, 0, .9);
+  paint-order: stroke fill;
+  text-shadow: 0 0 3px #000, 0 1px 2px #000;
+}
+
+/* Metro stations — rendered as SVG circleMarkers (see app.js), not
+   div icons: same renderer and coordinate path the metro lines
+   themselves use, so a dot always lands exactly on its line with no
+   separate DOM layer to fall out of sync with it. Their look (fill,
+   radius, stroke) is set inline via Leaflet path options, not CSS —
+   the classes below only cover the surrounding tooltip/label chrome.
+   The name shows on hover (.map-tooltip), same as a region's name. */
+
+/* A line's own name at its true terminus — a small solid tag in that
+   line's real color, the same idea as the little colored line-end labels
+   on a real transit map. */
+.line-end-badge {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .02em;
+  text-transform: uppercase;
+  color: #fff;
+  white-space: nowrap;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .6);
+}
+
+/* A station's own name, sitting right next to its dot — gray and quiet,
+   like a region's own-language name, not a bold label competing with the
+   line colors. Offset right and slightly up rather than centered on the
+   dot, so the dot itself always stays visible underneath. */
+.station-name-label {
+  display: inline-block;
+  transform: translate(6px, -8px);
+  color: rgba(210, 210, 210, .85);
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-shadow: 0 0 3px #000, 0 1px 2px #000;
+  pointer-events: none;
+}
+
+/* Region names — the native-language name (Chinese for China's
+   provinces, Japanese for Japan's prefectures), centered on the region,
+   dark and quiet so it reads as texture rather than a label competing
+   with cities. Non-interactive: hover/click still land on the region
+   polygon underneath. */
+.region-name {
+  color: rgba(255, 255, 255, .22);
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: .04em;
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+
+/* Sea/ocean names — soft blue, a little larger than region names since
+   these cover much more ground, reads as texture on the water itself. */
+.sea-name {
+  color: rgba(147, 197, 226, .5);
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: .05em;
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  text-align: center;
+}
+
+/* Chat */
+.chat-body { display: flex; flex-direction: column; gap: 10px; }
+.chat-msg {
+  max-width: 88%;
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 9px 13px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+.chat-msg-bot {
+  align-self: flex-start;
+  background: var(--panel-elev);
+  color: var(--text);
+}
+.chat-msg-user {
+  align-self: flex-end;
+  background: var(--accent-soft);
+  color: var(--text);
+  border-color: var(--accent-ring);
+}
+
+/* Chat window: message list + a docked input row at the bottom, reusing
+   the exact .field-row/.field-input/.field-submit styling from the login
+   screen's email field. */
+.chat-window-body { display: flex; flex-direction: column; height: 100%; }
+.chat-window-body .chat-body { flex: 1; min-height: 0; overflow-y: auto; padding: 16px; }
+.chat-input-row { flex-shrink: 0; padding: 10px 16px 14px; border-top: 1px solid var(--border); }
+
+.route-empty { font-size: 13px; color: var(--text-faint); margin: 0; }
+
+@media (max-width: 700px) {
+  .workspace { height: auto; min-height: 100vh; overflow: visible; padding: 14px 12px 30px; }
+}
