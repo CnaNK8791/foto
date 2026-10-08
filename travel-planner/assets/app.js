@@ -539,20 +539,6 @@
 
     mapInstance.attributionControl.setPrefix(false);
 
-    // Sea — one flat color, and only where water actually is: a real
-    // ocean mask (world land dissolved and cut out of a box around East
-    // Asia, via Natural Earth data) rather than anything derived from our
-    // own China/Japan polygons, so it doesn't paint over Mongolia, Russia
-    // or Korea just because they aren't on our map yet. Purely decorative
-    // — sits under everything else, not interactive.
-    const seaData = window.SEA_GEOJSON;
-    if (seaData) {
-      L.geoJSON(seaData, {
-        interactive: false,
-        style: () => ({ color: "transparent", weight: 0, fillColor: "#0f2d40", fillOpacity: 1 }),
-      }).addTo(mapInstance);
-    }
-
     // No hover highlight — it read as an annoying flash while just
     // moving the cursor around (especially once hovering a city also lit
     // up its whole region). A region only changes appearance on click,
@@ -751,6 +737,67 @@
       };
       mapInstance.on("zoomend", updateCityBoundaryVisibility);
       mapInstance.whenReady(updateCityBoundaryVisibility);
+    }
+
+    // Sea — and with it the true coastline. Drawn here, ON TOP of the
+    // province/prefecture/city layers rather than under them: those
+    // polygons are coarse along the coast (they run out over the water in
+    // places), so water is painted over them and the shoreline you see is
+    // the sea mask's own, not the regions'. Land is simply the black map
+    // background showing through, which also covers reclaimed shore the
+    // region outlines don't reach. Shorelines are GSHHG full resolution
+    // (~15 m) along China, Taiwan and Japan, coarse elsewhere (Korea,
+    // Russia… are context only), plus the big lakes of our three. Cut into
+    // 2° tiles so Leaflet skips the ones off screen. Not interactive, so
+    // clicks and tooltips still reach the regions underneath.
+    const seaData = window.SEA_TILES;
+    if (seaData) {
+      const SEA_COLOR = "#0f2d40";
+      const decodeRing = (s) => {
+        const pts = [];
+        let i = 0, lat = 0, lng = 0;
+        while (i < s.length) {
+          for (let k = 0; k < 2; k++) {
+            let result = 0, shift = 0, b;
+            do { b = s.charCodeAt(i++) - 63; result |= (b & 31) << shift; shift += 5; } while (b >= 32);
+            const delta = result & 1 ? ~(result >> 1) : result >> 1;
+            if (k === 0) lat += delta; else lng += delta;
+          }
+          pts.push([lat / 1e5, lng / 1e5]);
+        }
+        return pts;
+      };
+      const seaLayers = [];
+      const coastLayers = [];
+      seaData.tiles.forEach((tile) => {
+        const [w, s, e, n] = tile.b;
+        const rings = tile.r.map(decodeRing);
+        // even-odd, so a tile's land cut-outs (and lakes inside them) need no ring ordering
+        seaLayers.push(L.polygon(rings, {
+          interactive: false, stroke: false, fillColor: SEA_COLOR, fillOpacity: 1, fillRule: "evenodd",
+        }));
+        // Coastline = the same rings minus the stretches that only run
+        // along the tile's own edge (those are cuts, not shore).
+        const onEdge = (p) => p[1] === w || p[1] === e || p[0] === s || p[0] === n;
+        const sameEdge = (p, q) => (p[1] === q[1] && (p[1] === w || p[1] === e)) || (p[0] === q[0] && (p[0] === s || p[0] === n));
+        const runs = [];
+        rings.forEach((ring) => {
+          let run = [];
+          for (let i = 0; i < ring.length; i++) {
+            const p = ring[i], q = ring[i - 1];
+            if (q && onEdge(p) && onEdge(q) && sameEdge(p, q)) {
+              if (run.length > 1) runs.push(run);
+              run = [p];
+            } else run.push(p);
+          }
+          if (run.length > 1) runs.push(run);
+        });
+        if (runs.length) coastLayers.push(L.polyline(runs, {
+          interactive: false, color: "rgba(244,246,242,.5)", weight: 1, fill: false,
+        }));
+      });
+      L.featureGroup(seaLayers).addTo(mapInstance);
+      L.featureGroup(coastLayers).addTo(mapInstance);
     }
 
     // City street network — so far Shenzhen only: every road from
