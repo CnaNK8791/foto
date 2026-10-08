@@ -739,18 +739,29 @@
       mapInstance.whenReady(updateCityBoundaryVisibility);
     }
 
-    // Sea — and with it the true coastline. Drawn here, ON TOP of the
-    // province/prefecture/city layers rather than under them: those
-    // polygons are coarse along the coast (they run out over the water in
-    // places), so water is painted over them and the shoreline you see is
-    // the sea mask's own, not the regions'. Land is simply the black map
-    // background showing through, which also covers reclaimed shore the
-    // region outlines don't reach. Shorelines are GSHHG full resolution
-    // (~15 m) along China, Taiwan and Japan, coarse elsewhere (Korea,
-    // Russia… are context only), plus the big lakes of our three. Cut into
-    // 2° tiles so Leaflet skips the ones off screen. Not interactive, so
-    // clicks and tooltips still reach the regions underneath.
-    const seaData = window.SEA_TILES;
+    // Sea — and with it the true coastline. Painted ABOVE the province /
+    // prefecture / city fills (its own pane, z 401, over the overlay pane):
+    // those polygons are coarse along most coasts and run out over the
+    // water, so water is laid over them and the shoreline you see is the
+    // sea mask's own. Land is simply the black background showing through,
+    // which also covers reclaimed shore no region outline reaches. Streets,
+    // metro, rail and flights sit in a pane above it (z 402), so they stay
+    // on top of the water. Both panes ignore the mouse — clicks and
+    // tooltips still reach the regions underneath.
+    //
+    // Shorelines are GSHHG full resolution (~15 m) along China, Taiwan and
+    // Japan, coarse elsewhere, plus reclaimed shore the dataset predates.
+    // Shipped as four levels of detail, each simplified (and cleaned of
+    // spikes) in advance for its zoom range and drawn as-is
+    // (smoothFactor 0): left to Leaflet's own pixel-space simplification,
+    // narrow inlets folded into stray dark wedges out at sea. Each level is
+    // cut into tiles so off-screen ones cost nothing, and decoded only the
+    // first time its zoom range is reached.
+    mapInstance.createPane("seaPane").style.zIndex = 401;
+    mapInstance.createPane("transitPane").style.zIndex = 402;
+    mapInstance.getPane("seaPane").style.pointerEvents = "none";
+    mapInstance.getPane("transitPane").style.pointerEvents = "none";
+    const seaData = window.SEA_LOD;
     if (seaData) {
       const SEA_COLOR = "#0f2d40";
       const decodeRing = (s) => {
@@ -767,47 +778,72 @@
         }
         return pts;
       };
-      const seaLayers = [];
-      const coastLayers = [];
-      seaData.tiles.forEach((tile) => {
-        const [w, s, e, n] = tile.b;
-        const rings = tile.r.map(decodeRing);
-        // even-odd, so a tile's land cut-outs (and lakes inside them) need no ring ordering
-        seaLayers.push(L.polygon(rings, {
-          interactive: false, stroke: false, fillColor: SEA_COLOR, fillOpacity: 1, fillRule: "evenodd",
-        }));
-        // Coastline = the same rings minus the stretches that only run
-        // along the tile's own edge (those are cuts, not shore).
-        const onEdge = (p) => p[1] === w || p[1] === e || p[0] === s || p[0] === n;
-        const sameEdge = (p, q) => (p[1] === q[1] && (p[1] === w || p[1] === e)) || (p[0] === q[0] && (p[0] === s || p[0] === n));
-        const runs = [];
-        rings.forEach((ring) => {
-          let run = [];
-          for (let i = 0; i < ring.length; i++) {
-            const p = ring[i], q = ring[i - 1];
-            if (q && onEdge(p) && onEdge(q) && sameEdge(p, q)) {
-              if (run.length > 1) runs.push(run);
-              run = [p];
-            } else run.push(p);
-          }
-          if (run.length > 1) runs.push(run);
+      const buildLevel = (level) => {
+        const layers = [];
+        level.tiles.forEach((tile) => {
+          const [w, s, e, n] = tile.b;
+          const rings = tile.r.map(decodeRing);
+          // even-odd, so a tile's land cut-outs (and lakes inside them) need no ring ordering
+          layers.push(L.polygon(rings, {
+            pane: "seaPane", interactive: false, stroke: false,
+            fillColor: SEA_COLOR, fillOpacity: 1, fillRule: "evenodd", smoothFactor: 0,
+          }));
+          // Coastline = the same rings minus the stretches that only run
+          // along the tile's own edge (those are cuts, not shore).
+          const onEdge = (p) => p[1] === w || p[1] === e || p[0] === s || p[0] === n;
+          const sameEdge = (p, q) => (p[1] === q[1] && (p[1] === w || p[1] === e)) || (p[0] === q[0] && (p[0] === s || p[0] === n));
+          const runs = [];
+          rings.forEach((ring) => {
+            let run = [];
+            for (let i = 0; i < ring.length; i++) {
+              const p = ring[i], q = ring[i - 1];
+              if (q && onEdge(p) && onEdge(q) && sameEdge(p, q)) {
+                if (run.length > 1) runs.push(run);
+                run = [p];
+              } else run.push(p);
+            }
+            if (run.length > 1) runs.push(run);
+          });
+          if (runs.length) layers.push(L.polyline(runs, {
+            pane: "seaPane", interactive: false, color: "rgba(244,246,242,.5)", weight: 1, smoothFactor: 0,
+          }));
         });
-        if (runs.length) coastLayers.push(L.polyline(runs, {
-          interactive: false, color: "rgba(244,246,242,.5)", weight: 1, fill: false,
-        }));
-      });
-      L.featureGroup(seaLayers).addTo(mapInstance);
-      L.featureGroup(coastLayers).addTo(mapInstance);
+        return L.featureGroup(layers);
+      };
+      const groups = [];
+      let shown = null;
+      const updateSeaLevel = () => {
+        const z = mapInstance.getZoom();
+        const i = seaData.findIndex((lv) => z <= lv.maxZoom);
+        const idx = i < 0 ? seaData.length - 1 : i;
+        if (shown === idx) return;
+        if (!groups[idx]) groups[idx] = buildLevel(seaData[idx]);
+        groups[idx].addTo(mapInstance);
+        if (shown !== null) mapInstance.removeLayer(groups[shown]);
+        shown = idx;
+      };
+      mapInstance.on("zoomend", updateSeaLevel);
+      updateSeaLevel();
+      // Decode the remaining levels while the browser is idle, one per
+      // idle slot, so the first zoom into a city doesn't stall on it.
+      const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 200));
+      const prebuild = (i) => {
+        if (i >= seaData.length) return;
+        if (!groups[i]) groups[i] = buildLevel(seaData[i]);
+        idle(() => prebuild(i + 1));
+      };
+      idle(() => prebuild(0));
     }
 
     // City street networks — Shenzhen, Dongguan and Foshan so far, one
     // file each registering itself in window.CITY_ROADS: every road from
     // OpenStreetMap (via city-roads), georeferenced against the city's own
     // metro lines and cut exactly at its city boundary, so neighbouring
-    // cities meet at the shared border instead of overlapping. Added here, after the city outlines and before metro, so it
-    // sits on top of the region fills but under every transit line drawn
-    // later. A handful of multi-polylines (one SVG path per grid bucket,
-    // see below) rather than 26k separate layers: Leaflet clips and
+    // cities meet at the shared border instead of overlapping. Drawn in
+    // the transit pane, above the sea and the region fills, and added
+    // before metro so every transit line lands on top of it. A handful of
+    // multi-polylines (one SVG path per grid bucket, see below) rather
+    // than 26k separate layers: Leaflet clips and
     // simplifies each to the visible area on redraw and skips off-screen
     // buckets entirely, so it stays cheap even zoomed all the way in.
     // Faint at the city-wide view and firmer as you zoom in, so the
@@ -844,6 +880,7 @@
       }));
       const roadsLayer = L.featureGroup(
         [...buckets.values()].map((lines) => L.polyline(lines, {
+          pane: "transitPane",
           interactive: false,
           color: "#f4f6f2",
           weight: 0.6,
@@ -873,6 +910,7 @@
     const METRO_MIN_ZOOM = 8;
     if (metroData) {
       const metroLayer = L.geoJSON(metroData, {
+        pane: "transitPane",
         interactive: false,
         // smoothFactor: 0 — Leaflet's default (1) simplifies the rendered
         // path for performance; with station dots now snapped exactly onto
@@ -918,10 +956,12 @@
     const HSR_OPACITY = 0.6; // duller than metro's 0.9 — a lot of these run close together
     if (hsrData) {
       const hsrOuter = L.geoJSON(hsrData, {
+        pane: "transitPane",
         interactive: false,
         style: () => ({ color: HSR_COLOR, weight: 3, opacity: HSR_OPACITY, fillOpacity: 0, smoothFactor: 0 }),
       }).addTo(mapInstance);
       const hsrInner = L.geoJSON(hsrData, {
+        pane: "transitPane",
         interactive: false,
         style: () => ({ color: HSR_CENTERLINE_COLOR, weight: 1, opacity: HSR_OPACITY, fillOpacity: 0, smoothFactor: 0 }),
       }).addTo(mapInstance);
@@ -1896,6 +1936,7 @@
     function addFlightToMap(flight) {
       if (activeFlights[flight.id] || !mapInstance) return;
       const line = L.polyline([flight.from.latlng, flight.to.latlng], {
+        pane: "transitPane",
         color: SAKURA,
         weight: 2.4,
         opacity: 0.9,
