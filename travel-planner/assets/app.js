@@ -835,10 +835,12 @@
       idle(() => prebuild(0));
     }
 
-    // City street networks — Shenzhen, Dongguan and Foshan so far, one
-    // file each registering itself in window.CITY_ROADS: every road from
-    // OpenStreetMap (via city-roads), georeferenced against the city's own
-    // metro lines and cut exactly at its city boundary, so neighbouring
+    // City street networks — Shenzhen, Dongguan, Foshan and Huizhou so
+    // far, one file each registering itself in window.CITY_ROADS: every
+    // road from OpenStreetMap (via city-roads), georeferenced against the
+    // city's own metro lines (or, with no metro, against the neighbours'
+    // roads its own cross the border onto) and cut exactly at its city
+    // boundary, so neighbouring
     // cities meet at the shared border instead of overlapping. Drawn in
     // the transit pane, above the sea and the region fills, and added
     // before metro so every transit line lands on top of it. A handful of
