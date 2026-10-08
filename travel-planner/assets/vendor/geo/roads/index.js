@@ -1,0 +1,3 @@
+// Cities with OpenStreetMap streets: bbox [west, south, east, north] and the file with
+// their minor classes (tertiary/residential/service), fetched when you zoom in nearby.
+window.OSM_ROADS_INDEX = [{"city":"Шэньчжэнь","bbox":[113.7508,22.3994,114.6212,22.8647],"minor":"assets/vendor/geo/roads/shenzhen-minor.js"},{"city":"Дунгуань","bbox":[113.5172,22.657,114.2555,23.1447],"minor":"assets/vendor/geo/roads/dongguan-minor.js"},{"city":"Гуанчжоу","bbox":[112.9534,22.5632,114.0548,23.9357],"minor":"assets/vendor/geo/roads/guangzhou-minor.js"},{"city":"Фошань","bbox":[112.3855,22.6452,113.3879,23.5762],"minor":"assets/vendor/geo/roads/foshan-minor.js"}];

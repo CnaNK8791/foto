@@ -758,9 +758,8 @@
     // cut into tiles so off-screen ones cost nothing, and decoded only the
     // first time its zoom range is reached.
     mapInstance.createPane("seaPane").style.zIndex = 401;
-    mapInstance.createPane("roadsPane").style.zIndex = 402;
-    mapInstance.createPane("transitPane").style.zIndex = 403;
-    ["seaPane", "roadsPane", "transitPane"].forEach((p) => { mapInstance.getPane(p).style.pointerEvents = "none"; });
+    mapInstance.createPane("transitPane").style.zIndex = 410;
+    ["seaPane", "transitPane"].forEach((p) => { mapInstance.getPane(p).style.pointerEvents = "none"; });
     const seaData = window.SEA_LOD;
     if (seaData) {
       const SEA_COLOR = "#0f2d40";
@@ -835,84 +834,111 @@
       idle(() => prebuild(0));
     }
 
-    // City street networks — nine Guangdong cities so far, one file
-    // each registering itself in window.CITY_ROADS: every
-    // road from OpenStreetMap (via city-roads), georeferenced against the
-    // city's own metro lines (or, with no metro, against the neighbours'
-    // roads its own cross the border onto) and cut exactly at its city
-    // boundary, so neighbouring
-    // cities meet at the shared border instead of overlapping. Drawn in
-    // their own pane, above the sea and the region fills and below the
-    // transit pane, so every metro/rail line lands on top of them. A handful of
-    // multi-polylines (one SVG path per grid bucket, see below) rather
-    // than 26k separate layers: Leaflet clips and
-    // simplifies each to the visible area on redraw and skips off-screen
-    // buckets entirely, so it stays cheap even zoomed all the way in.
-    // Faint at the city-wide view and firmer as you zoom in, so the
-    // street grid reads as texture first and as actual streets up close.
-    const roadsData = window.CITY_ROADS;
-    const ROADS_MIN_ZOOM = 9;
-    if (roadsData) {
-      // Google encoded polyline (precision 5) -> [[lat, lng], ...]
-      const decodePolyline = (s) => {
-        const pts = [];
-        let i = 0, lat = 0, lng = 0;
-        while (i < s.length) {
-          for (let k = 0; k < 2; k++) {
-            let result = 0, shift = 0, b;
-            do { b = s.charCodeAt(i++) - 63; result |= (b & 31) << shift; shift += 5; } while (b >= 32);
-            const delta = result & 1 ? ~(result >> 1) : result >> 1;
-            if (k === 0) lat += delta; else lng += delta;
-          }
-          pts.push([lat / 1e5, lng / 1e5]);
+    // City streets. Two sources, drawn the same way:
+    //  - OSM_ROADS: real OpenStreetMap ways (already in true coordinates),
+    //    one file per city, cut exactly at the city boundary — a road that
+    //    crosses into the next city is cut at the very same point from
+    //    both sides, so the network runs on unbroken. Five classes, from
+    //    motorways to service roads; the "major" file (classes 0–1) is
+    //    loaded with the page, the "minor" one (2–4) is fetched on demand
+    //    with a <script> tag (works from file:// too) the first time you
+    //    zoom in near that city.
+    //  - CITY_ROADS: city-roads exports for cities without an OSM download
+    //    yet (no road classes; drawn as one mid-weight class).
+    // Each class has its own pane, stacked minor-under-major, all between
+    // the sea and the transit pane. Lines are bucketed into ~5 km cells and
+    // only buckets near the view at a zoom where their class shows are on
+    // the map at all — Leaflet reprojects every path on the map on each
+    // zoom, so this keeps zooming cheap however many streets are loaded.
+    const ROAD_CLASSES = [
+      // minZoom, then [opacity, weight] at z9, z11, z13, z15
+      { minZoom: 8, style: [[0.45, 1.1], [0.6, 1.6], [0.7, 2.2], [0.75, 3]] },   // 0 motorway / trunk
+      { minZoom: 9, style: [[0.3, 0.8], [0.45, 1.2], [0.6, 1.7], [0.65, 2.4]] },  // 1 primary / secondary
+      { minZoom: 10, style: [[0.2, 0.6], [0.32, 0.8], [0.45, 1.2], [0.55, 1.8]] }, // 2 tertiary / unclassified
+      { minZoom: 12, style: [[0.15, 0.5], [0.22, 0.6], [0.35, 0.9], [0.45, 1.3]] }, // 3 residential / pedestrian
+      { minZoom: 13, style: [[0.12, 0.4], [0.16, 0.5], [0.26, 0.7], [0.35, 1]] },   // 4 service
+      { minZoom: 9, style: [[0.2, 0.6], [0.36, 0.8], [0.5, 1], [0.55, 1.3]] },      // 5 city-roads (unclassified)
+    ];
+    const ROAD_CELL_DEG = 0.05;
+    ROAD_CLASSES.forEach((_, k) => {
+      const pane = mapInstance.createPane("roadsPane" + k);
+      pane.style.zIndex = 402 + [5, 4, 3, 2, 1, 3][k]; // service lowest … motorway on top
+      pane.style.pointerEvents = "none";
+    });
+    // Google encoded polyline (precision 5) -> [[lat, lng], ...]
+    const decodePolyline = (s) => {
+      const pts = [];
+      let i = 0, lat = 0, lng = 0;
+      while (i < s.length) {
+        for (let k = 0; k < 2; k++) {
+          let result = 0, shift = 0, b;
+          do { b = s.charCodeAt(i++) - 63; result |= (b & 31) << shift; shift += 5; } while (b >= 32);
+          const delta = result & 1 ? ~(result >> 1) : result >> 1;
+          if (k === 0) lat += delta; else lng += delta;
         }
-        return pts;
-      };
-      // Bucketed into a coarse grid (~5 km cells, by each line's first
-      // point): Leaflet skips a whole polyline whose bounds are off screen,
-      // so zoomed into one district it only clips the few buckets in view
-      // instead of every point of every city on each pan.
-      const ROAD_CELL_DEG = 0.05;
+        pts.push([lat / 1e5, lng / 1e5]);
+      }
+      return pts;
+    };
+    const roadBuckets = [];
+    const addRoadLines = (k, encoded) => {
       const buckets = new Map();
-      Object.values(roadsData).forEach((city) => city.lines.forEach((s) => {
+      encoded.forEach((s) => {
         const pts = decodePolyline(s);
         const key = Math.floor(pts[0][0] / ROAD_CELL_DEG) + ":" + Math.floor(pts[0][1] / ROAD_CELL_DEG);
         if (!buckets.has(key)) buckets.set(key, []);
         buckets.get(key).push(pts);
-      }));
-      // Streets have their own pane (between the sea and transit), so a
-      // bucket can be put on and taken off the map freely: only buckets
-      // near the view are on it at all, and none below ROADS_MIN_ZOOM —
-      // Leaflet reprojects every path on the map on each zoom, and with
-      // ~850k street points across the cities that alone took seconds.
-      let roadStyle = { opacity: 0.2, weight: 0.6 };
-      const roadBuckets = [...buckets.values()].map((lines) => {
-        const layer = L.polyline(lines, {
-          pane: "roadsPane", interactive: false, color: "#f4f6f2",
-          lineCap: "round", lineJoin: "round", ...roadStyle,
-        });
-        return { layer, bounds: layer.getBounds(), on: false };
       });
-      const updateRoadsVisibility = () => {
-        const z = mapInstance.getZoom();
-        const show = z >= ROADS_MIN_ZOOM;
-        if (show) {
-          roadStyle = {
-            opacity: z <= 9 ? 0.2 : z === 10 ? 0.28 : z === 11 ? 0.36 : z === 12 ? 0.45 : 0.55,
-            weight: z <= 10 ? 0.6 : z <= 12 ? 0.8 : z <= 14 ? 1 : 1.3,
-          };
-        }
-        const view = mapInstance.getBounds().pad(0.5);
-        roadBuckets.forEach((b) => {
-          const want = show && view.intersects(b.bounds);
-          if (want) b.layer.setStyle(roadStyle);
-          if (want && !b.on) { b.layer.addTo(mapInstance); b.on = true; }
-          else if (!want && b.on) { mapInstance.removeLayer(b.layer); b.on = false; }
+      buckets.forEach((lines) => {
+        const layer = L.polyline(lines, {
+          pane: "roadsPane" + k, interactive: false, color: "#f4f6f2", lineCap: "round", lineJoin: "round",
         });
-      };
-      mapInstance.on("moveend", updateRoadsVisibility);
-      mapInstance.whenReady(updateRoadsVisibility);
+        roadBuckets.push({ k, layer, bounds: layer.getBounds(), on: false });
+      });
+    };
+    const roadStyleAt = (k, z) => {
+      const st = ROAD_CLASSES[k].style;
+      const i = z <= 9 ? 0 : z <= 11 ? 1 : z <= 13 ? 2 : 3;
+      return { opacity: st[i][0], weight: st[i][1] };
+    };
+    const updateRoadsVisibility = () => {
+      const z = mapInstance.getZoom();
+      const view = mapInstance.getBounds().pad(0.5);
+      roadBuckets.forEach((b) => {
+        const want = z >= ROAD_CLASSES[b.k].minZoom && view.intersects(b.bounds);
+        if (want) b.layer.setStyle(roadStyleAt(b.k, z));
+        if (want && !b.on) { b.layer.addTo(mapInstance); b.on = true; }
+        else if (!want && b.on) { mapInstance.removeLayer(b.layer); b.on = false; }
+      });
+      loadMinorRoads(z, view);
+    };
+    Object.values(window.OSM_ROADS || {}).forEach((byClass) => {
+      Object.entries(byClass).forEach(([k, lines]) => addRoadLines(+k, lines));
+    });
+    Object.values(window.CITY_ROADS || {}).forEach((city) => addRoadLines(5, city.lines));
+    // Minor classes, fetched per city on first zoom-in nearby.
+    const MINOR_LOAD_ZOOM = 10;
+    const minorState = {};
+    window.OSM_ROADS_MINOR = (city, byClass) => {
+      Object.entries(byClass).forEach(([k, lines]) => addRoadLines(+k, lines));
+      minorState[city] = "loaded";
+      updateRoadsVisibility();
+    };
+    function loadMinorRoads(z, view) {
+      if (z < MINOR_LOAD_ZOOM) return;
+      (window.OSM_ROADS_INDEX || []).forEach((c) => {
+        if (minorState[c.city]) return;
+        const [w, s, e, n] = c.bbox;
+        if (!view.intersects(L.latLngBounds([s, w], [n, e]))) return;
+        minorState[c.city] = "loading";
+        const tag = document.createElement("script");
+        tag.src = c.minor;
+        tag.onerror = () => { minorState[c.city] = null; };
+        document.head.appendChild(tag);
+      });
     }
+    mapInstance.on("moveend", updateRoadsVisibility);
+    mapInstance.whenReady(updateRoadsVisibility);
 
     // Metro/subway lines — drawn in each system's real line colors, inside
     // the city boundary. Only the cities that actually run one carry any
