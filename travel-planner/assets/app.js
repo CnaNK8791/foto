@@ -753,6 +753,55 @@
       mapInstance.whenReady(updateCityBoundaryVisibility);
     }
 
+    // City street network — so far Shenzhen only: every road from
+    // OpenStreetMap (via city-roads), georeferenced against the city's own
+    // metro lines and cut exactly at the city boundary — nothing spills
+    // into Dongguan, Huizhou or Hong Kong; only bridges continue over open
+    // water. Added here, after the city outlines and before metro, so it
+    // sits on top of the region fills but under every transit line drawn
+    // later. One multi-polyline (a single SVG path) rather than 26k
+    // separate layers: Leaflet clips and simplifies it to the visible
+    // area on each redraw, so it stays cheap even zoomed all the way in.
+    // Faint at the city-wide view and firmer as you zoom in, so the
+    // street grid reads as texture first and as actual streets up close.
+    const roadsData = window.SHENZHEN_ROADS;
+    const ROADS_MIN_ZOOM = 9;
+    if (roadsData) {
+      // Google encoded polyline (precision 5) -> [[lat, lng], ...]
+      const decodePolyline = (s) => {
+        const pts = [];
+        let i = 0, lat = 0, lng = 0;
+        while (i < s.length) {
+          for (let k = 0; k < 2; k++) {
+            let result = 0, shift = 0, b;
+            do { b = s.charCodeAt(i++) - 63; result |= (b & 31) << shift; shift += 5; } while (b >= 32);
+            const delta = result & 1 ? ~(result >> 1) : result >> 1;
+            if (k === 0) lat += delta; else lng += delta;
+          }
+          pts.push([lat / 1e5, lng / 1e5]);
+        }
+        return pts;
+      };
+      const roadsLayer = L.polyline(roadsData.lines.map(decodePolyline), {
+        interactive: false,
+        color: "#f4f6f2",
+        weight: 0.6,
+        opacity: 0,
+        lineCap: "round",
+        lineJoin: "round",
+      }).addTo(mapInstance);
+      const updateRoadsVisibility = () => {
+        const z = mapInstance.getZoom();
+        if (z < ROADS_MIN_ZOOM) { roadsLayer.setStyle({ opacity: 0 }); return; }
+        roadsLayer.setStyle({
+          opacity: z <= 9 ? 0.2 : z === 10 ? 0.28 : z === 11 ? 0.36 : z === 12 ? 0.45 : 0.55,
+          weight: z <= 10 ? 0.6 : z <= 12 ? 0.8 : z <= 14 ? 1 : 1.3,
+        });
+      };
+      mapInstance.on("zoomend", updateRoadsVisibility);
+      mapInstance.whenReady(updateRoadsVisibility);
+    }
+
     // Metro/subway lines — drawn in each system's real line colors, inside
     // the city boundary. Only the cities that actually run one carry any
     // data here; shown a touch closer in than the city outline itself,
