@@ -758,9 +758,9 @@
     // cut into tiles so off-screen ones cost nothing, and decoded only the
     // first time its zoom range is reached.
     mapInstance.createPane("seaPane").style.zIndex = 401;
-    mapInstance.createPane("transitPane").style.zIndex = 402;
-    mapInstance.getPane("seaPane").style.pointerEvents = "none";
-    mapInstance.getPane("transitPane").style.pointerEvents = "none";
+    mapInstance.createPane("roadsPane").style.zIndex = 402;
+    mapInstance.createPane("transitPane").style.zIndex = 403;
+    ["seaPane", "roadsPane", "transitPane"].forEach((p) => { mapInstance.getPane(p).style.pointerEvents = "none"; });
     const seaData = window.SEA_LOD;
     if (seaData) {
       const SEA_COLOR = "#0f2d40";
@@ -835,15 +835,16 @@
       idle(() => prebuild(0));
     }
 
-    // City street networks — Shenzhen, Dongguan, Foshan and Huizhou so
-    // far, one file each registering itself in window.CITY_ROADS: every
+    // City street networks — Shenzhen, Dongguan, Foshan, Huizhou and
+    // Guangzhou so far, one file each registering itself in
+    // window.CITY_ROADS: every
     // road from OpenStreetMap (via city-roads), georeferenced against the
     // city's own metro lines (or, with no metro, against the neighbours'
     // roads its own cross the border onto) and cut exactly at its city
     // boundary, so neighbouring
     // cities meet at the shared border instead of overlapping. Drawn in
-    // the transit pane, above the sea and the region fills, and added
-    // before metro so every transit line lands on top of it. A handful of
+    // their own pane, above the sea and the region fills and below the
+    // transit pane, so every metro/rail line lands on top of them. A handful of
     // multi-polylines (one SVG path per grid bucket, see below) rather
     // than 26k separate layers: Leaflet clips and
     // simplifies each to the visible area on redraw and skips off-screen
@@ -880,26 +881,37 @@
         if (!buckets.has(key)) buckets.set(key, []);
         buckets.get(key).push(pts);
       }));
-      const roadsLayer = L.featureGroup(
-        [...buckets.values()].map((lines) => L.polyline(lines, {
-          pane: "transitPane",
-          interactive: false,
-          color: "#f4f6f2",
-          weight: 0.6,
-          opacity: 0,
-          lineCap: "round",
-          lineJoin: "round",
-        }))
-      ).addTo(mapInstance);
+      // Streets have their own pane (between the sea and transit), so a
+      // bucket can be put on and taken off the map freely: only buckets
+      // near the view are on it at all, and none below ROADS_MIN_ZOOM —
+      // Leaflet reprojects every path on the map on each zoom, and with
+      // ~850k street points across the cities that alone took seconds.
+      let roadStyle = { opacity: 0.2, weight: 0.6 };
+      const roadBuckets = [...buckets.values()].map((lines) => {
+        const layer = L.polyline(lines, {
+          pane: "roadsPane", interactive: false, color: "#f4f6f2",
+          lineCap: "round", lineJoin: "round", ...roadStyle,
+        });
+        return { layer, bounds: layer.getBounds(), on: false };
+      });
       const updateRoadsVisibility = () => {
         const z = mapInstance.getZoom();
-        if (z < ROADS_MIN_ZOOM) { roadsLayer.setStyle({ opacity: 0 }); return; }
-        roadsLayer.setStyle({
-          opacity: z <= 9 ? 0.2 : z === 10 ? 0.28 : z === 11 ? 0.36 : z === 12 ? 0.45 : 0.55,
-          weight: z <= 10 ? 0.6 : z <= 12 ? 0.8 : z <= 14 ? 1 : 1.3,
+        const show = z >= ROADS_MIN_ZOOM;
+        if (show) {
+          roadStyle = {
+            opacity: z <= 9 ? 0.2 : z === 10 ? 0.28 : z === 11 ? 0.36 : z === 12 ? 0.45 : 0.55,
+            weight: z <= 10 ? 0.6 : z <= 12 ? 0.8 : z <= 14 ? 1 : 1.3,
+          };
+        }
+        const view = mapInstance.getBounds().pad(0.5);
+        roadBuckets.forEach((b) => {
+          const want = show && view.intersects(b.bounds);
+          if (want) b.layer.setStyle(roadStyle);
+          if (want && !b.on) { b.layer.addTo(mapInstance); b.on = true; }
+          else if (!want && b.on) { mapInstance.removeLayer(b.layer); b.on = false; }
         });
       };
-      mapInstance.on("zoomend", updateRoadsVisibility);
+      mapInstance.on("moveend", updateRoadsVisibility);
       mapInstance.whenReady(updateRoadsVisibility);
     }
 
