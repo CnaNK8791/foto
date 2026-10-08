@@ -836,8 +836,10 @@
 
     // City streets. Two sources, drawn the same way:
     //  - OSM_ROADS: real OpenStreetMap ways (already in true coordinates),
-    //    one file per city, cut exactly at the city boundary — a road that
-    //    crosses into the next city is cut at the very same point from
+    //    one file per city, cut exactly at the city's administrative
+    //    boundary (water included, so bridges and causeways stay whole) —
+    //    a road that crosses into the next city is cut at the very same
+    //    point from
     //    both sides, so the network runs on unbroken. Five classes, from
     //    motorways to service roads; the "major" file (classes 0–1) is
     //    loaded with the page, the "minor" one (2–4) is fetched on demand
@@ -850,14 +852,18 @@
     // only buckets near the view at a zoom where their class shows are on
     // the map at all — Leaflet reprojects every path on the map on each
     // zoom, so this keeps zooming cheap however many streets are loaded.
+    // Quiet by default: muted grey at the region and city views, brighter
+    // as you zoom in, and only close up (z15+) do the streets turn white.
+    const ROAD_BANDS = [9, 11, 13, 14]; // band i covers zooms up to ROAD_BANDS[i]; the last band is z15+
+    const ROAD_COLORS = ["#6f767d", "#7d848b", "#959ba1", "#c3c7cb", "#f4f6f2"];
     const ROAD_CLASSES = [
-      // minZoom, then [opacity, weight] at z9, z11, z13, z15
-      { minZoom: 8, style: [[0.45, 1.1], [0.6, 1.6], [0.7, 2.2], [0.75, 3]] },   // 0 motorway / trunk
-      { minZoom: 9, style: [[0.3, 0.8], [0.45, 1.2], [0.6, 1.7], [0.65, 2.4]] },  // 1 primary / secondary
-      { minZoom: 10, style: [[0.2, 0.6], [0.32, 0.8], [0.45, 1.2], [0.55, 1.8]] }, // 2 tertiary / unclassified
-      { minZoom: 12, style: [[0.15, 0.5], [0.22, 0.6], [0.35, 0.9], [0.45, 1.3]] }, // 3 residential / pedestrian
-      { minZoom: 13, style: [[0.12, 0.4], [0.16, 0.5], [0.26, 0.7], [0.35, 1]] },   // 4 service
-      { minZoom: 9, style: [[0.2, 0.6], [0.36, 0.8], [0.5, 1], [0.55, 1.3]] },      // 5 city-roads (unclassified)
+      // minZoom, then [opacity, weight] per band: ≤9, 10–11, 12–13, 14, 15+
+      { minZoom: 8, style: [[0.35, 1], [0.45, 1.4], [0.5, 1.9], [0.55, 2.4], [0.7, 3]] },     // 0 motorway / trunk
+      { minZoom: 9, style: [[0.22, 0.7], [0.32, 1.1], [0.4, 1.5], [0.48, 1.9], [0.62, 2.4]] }, // 1 primary / secondary
+      { minZoom: 10, style: [[0.15, 0.5], [0.22, 0.7], [0.3, 1], [0.38, 1.3], [0.52, 1.8]] },   // 2 tertiary / unclassified
+      { minZoom: 12, style: [[0.1, 0.4], [0.15, 0.5], [0.22, 0.8], [0.3, 1], [0.42, 1.3]] },    // 3 residential / pedestrian
+      { minZoom: 13, style: [[0.08, 0.4], [0.1, 0.4], [0.16, 0.6], [0.22, 0.8], [0.32, 1]] },  // 4 service
+      { minZoom: 9, style: [[0.15, 0.5], [0.24, 0.7], [0.32, 0.9], [0.4, 1.1], [0.5, 1.3]] },   // 5 city-roads (unclassified)
     ];
     const ROAD_CELL_DEG = 0.05;
     ROAD_CLASSES.forEach((_, k) => {
@@ -891,15 +897,16 @@
       });
       buckets.forEach((lines) => {
         const layer = L.polyline(lines, {
-          pane: "roadsPane" + k, interactive: false, color: "#f4f6f2", lineCap: "round", lineJoin: "round",
+          pane: "roadsPane" + k, interactive: false, lineCap: "round", lineJoin: "round",
         });
         roadBuckets.push({ k, layer, bounds: layer.getBounds(), on: false });
       });
     };
     const roadStyleAt = (k, z) => {
-      const st = ROAD_CLASSES[k].style;
-      const i = z <= 9 ? 0 : z <= 11 ? 1 : z <= 13 ? 2 : 3;
-      return { opacity: st[i][0], weight: st[i][1] };
+      let i = ROAD_BANDS.findIndex((maxZ) => z <= maxZ);
+      if (i < 0) i = ROAD_BANDS.length;
+      const [opacity, weight] = ROAD_CLASSES[k].style[i];
+      return { opacity, weight, color: ROAD_COLORS[i] };
     };
     const updateRoadsVisibility = () => {
       const z = mapInstance.getZoom();
