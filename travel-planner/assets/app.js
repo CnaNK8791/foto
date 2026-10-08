@@ -759,9 +759,10 @@
     // into Dongguan, Huizhou or Hong Kong; only bridges continue over open
     // water. Added here, after the city outlines and before metro, so it
     // sits on top of the region fills but under every transit line drawn
-    // later. One multi-polyline (a single SVG path) rather than 26k
-    // separate layers: Leaflet clips and simplifies it to the visible
-    // area on each redraw, so it stays cheap even zoomed all the way in.
+    // later. A handful of multi-polylines (one SVG path per grid bucket,
+    // see below) rather than 26k separate layers: Leaflet clips and
+    // simplifies each to the visible area on redraw and skips off-screen
+    // buckets entirely, so it stays cheap even zoomed all the way in.
     // Faint at the city-wide view and firmer as you zoom in, so the
     // street grid reads as texture first and as actual streets up close.
     const roadsData = window.SHENZHEN_ROADS;
@@ -782,14 +783,28 @@
         }
         return pts;
       };
-      const roadsLayer = L.polyline(roadsData.lines.map(decodePolyline), {
-        interactive: false,
-        color: "#f4f6f2",
-        weight: 0.6,
-        opacity: 0,
-        lineCap: "round",
-        lineJoin: "round",
-      }).addTo(mapInstance);
+      // Bucketed into a coarse grid (~5 km cells, by each line's first
+      // point): Leaflet skips a whole polyline whose bounds are off screen,
+      // so zoomed into one district it only clips the few buckets in view
+      // instead of all ~190k points of the city on every pan.
+      const ROAD_CELL_DEG = 0.05;
+      const buckets = new Map();
+      roadsData.lines.forEach((s) => {
+        const pts = decodePolyline(s);
+        const key = Math.floor(pts[0][0] / ROAD_CELL_DEG) + ":" + Math.floor(pts[0][1] / ROAD_CELL_DEG);
+        if (!buckets.has(key)) buckets.set(key, []);
+        buckets.get(key).push(pts);
+      });
+      const roadsLayer = L.featureGroup(
+        [...buckets.values()].map((lines) => L.polyline(lines, {
+          interactive: false,
+          color: "#f4f6f2",
+          weight: 0.6,
+          opacity: 0,
+          lineCap: "round",
+          lineJoin: "round",
+        }))
+      ).addTo(mapInstance);
       const updateRoadsVisibility = () => {
         const z = mapInstance.getZoom();
         if (z < ROADS_MIN_ZOOM) { roadsLayer.setStyle({ opacity: 0 }); return; }
