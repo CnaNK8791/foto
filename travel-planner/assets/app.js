@@ -835,9 +835,8 @@
       idle(() => prebuild(0));
     }
 
-    // City street networks — Shenzhen, Dongguan, Foshan, Huizhou and
-    // Guangzhou so far, one file each registering itself in
-    // window.CITY_ROADS: every
+    // City street networks — nine Guangdong cities so far, one file
+    // each registering itself in window.CITY_ROADS: every
     // road from OpenStreetMap (via city-roads), georeferenced against the
     // city's own metro lines (or, with no metro, against the neighbours'
     // roads its own cross the border onto) and cut exactly at its city
