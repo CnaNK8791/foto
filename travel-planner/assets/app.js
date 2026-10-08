@@ -800,11 +800,11 @@
       L.featureGroup(coastLayers).addTo(mapInstance);
     }
 
-    // City street network — so far Shenzhen only: every road from
+    // City street networks — Shenzhen, Dongguan and Foshan so far, one
+    // file each registering itself in window.CITY_ROADS: every road from
     // OpenStreetMap (via city-roads), georeferenced against the city's own
-    // metro lines and cut exactly at the city boundary — nothing spills
-    // into Dongguan, Huizhou or Hong Kong; only bridges continue over open
-    // water. Added here, after the city outlines and before metro, so it
+    // metro lines and cut exactly at its city boundary, so neighbouring
+    // cities meet at the shared border instead of overlapping. Added here, after the city outlines and before metro, so it
     // sits on top of the region fills but under every transit line drawn
     // later. A handful of multi-polylines (one SVG path per grid bucket,
     // see below) rather than 26k separate layers: Leaflet clips and
@@ -812,7 +812,7 @@
     // buckets entirely, so it stays cheap even zoomed all the way in.
     // Faint at the city-wide view and firmer as you zoom in, so the
     // street grid reads as texture first and as actual streets up close.
-    const roadsData = window.SHENZHEN_ROADS;
+    const roadsData = window.CITY_ROADS;
     const ROADS_MIN_ZOOM = 9;
     if (roadsData) {
       // Google encoded polyline (precision 5) -> [[lat, lng], ...]
@@ -833,15 +833,15 @@
       // Bucketed into a coarse grid (~5 km cells, by each line's first
       // point): Leaflet skips a whole polyline whose bounds are off screen,
       // so zoomed into one district it only clips the few buckets in view
-      // instead of all ~190k points of the city on every pan.
+      // instead of every point of every city on each pan.
       const ROAD_CELL_DEG = 0.05;
       const buckets = new Map();
-      roadsData.lines.forEach((s) => {
+      Object.values(roadsData).forEach((city) => city.lines.forEach((s) => {
         const pts = decodePolyline(s);
         const key = Math.floor(pts[0][0] / ROAD_CELL_DEG) + ":" + Math.floor(pts[0][1] / ROAD_CELL_DEG);
         if (!buckets.has(key)) buckets.set(key, []);
         buckets.get(key).push(pts);
-      });
+      }));
       const roadsLayer = L.featureGroup(
         [...buckets.values()].map((lines) => L.polyline(lines, {
           interactive: false,
